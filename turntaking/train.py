@@ -39,7 +39,7 @@ class Train():
             mean, var = self.model.inference_speed
             print(f"inference speed: {mean}({var})")
             # print(self.model)
-            exit(1)
+            # exit(1)
         
         # self.model = torch.nn.DataParallel(self.model).to(self.conf["train"]["device"])
         self.dm = dm
