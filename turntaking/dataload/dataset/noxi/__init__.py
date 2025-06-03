@@ -2,8 +2,8 @@ from os.path import join
 from datasets import load_dataset
 from turntaking.dataload.utils import repo_root, read_txt
 
-AUDIO_DIR = "/ahc/work2/kazuyo-oni/projects/data/noxi"
-MULTIMODAL_DIR = "/ahc/work2/kazuyo-oni/projects/data/noxi"
+AUDIO_DIR = "/scratch/vemotionsys/rmfrieske/datasets/noxi"
+MULTIMODAL_DIR = "/scratch/vemotionsys/rmfrieske/datasets/noxi"
 
 DATASET_SCRIPT = join(repo_root(), "dataload/dataset/noxi/noxi.py")
 NORM_JSON = join(repo_root(), "dataload/dataset/noxi/files/normalize.json")

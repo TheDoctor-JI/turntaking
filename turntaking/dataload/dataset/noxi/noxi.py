@@ -17,7 +17,7 @@ from turntaking.dataload.utils import (
 
 logger = datasets.logging.get_logger(__name__)
 
-EXTRACTED_PATH = "/ahc/work2/kazuyo-oni/projects/data/noxi"
+EXTRACTED_PATH = "/scratch/vemotionsys/rmfrieske/datasets/noxi"
 
 REL_AUDIO_PATH = join(
     repo_root(), "dataload/dataset/noxi/files/relative_audio_path.json"
