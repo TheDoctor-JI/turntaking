@@ -134,7 +134,10 @@ def load_waveform(
         else:
             num_frames -= frame_offset
 
-    x, sr = torchaudio.load(path, frame_offset=frame_offset, num_frames=num_frames)
+    if(num_frames is None):
+        x, sr = torchaudio.load(path, frame_offset=frame_offset)
+    else:
+        x, sr = torchaudio.load(path, frame_offset=frame_offset, num_frames=num_frames)
 
     if normalize:
         max_val = x.abs().max(dim=1)[0]

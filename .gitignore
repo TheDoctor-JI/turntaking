@@ -161,3 +161,5 @@ turntaking/realtime_sim.py
 turntaking/test_other_model.py
 turntaking/corpus_analysis.py
 run.sh
+
+training_output

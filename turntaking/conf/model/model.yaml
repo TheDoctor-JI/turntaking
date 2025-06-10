@@ -46,7 +46,7 @@ audio_module: &AudioModule
   type: 'transformer' #transformer, cnn, lstm, gru, conformer
   input_size: 256
   num_layers: 2
-  dropout: 0.4
+  dropout: 0.1
   model_kwargs:
     <<: *model_kwargs
 
@@ -62,14 +62,14 @@ audio_cond:
   use_module: true
   encoder:
     <<: *Encoder
-    use_module: false
+    use_module: true
     module:
-      use_module: false
+      use_module: true
       <<: *AudioModule
   encoder_separated_audio:
-    use_module: true
+    use_module: false
     user1_input: false
-    user2_input: true
+    user2_input: false
     <<: *Encoder
     user_1: 
       module:
@@ -89,7 +89,7 @@ audio_cond:
     <<: *AudioModule
 
 non_verbal_cond:
-  use_module: true
+  use_module: false
   user1_input: false
   user2_input: true
   gaze: 
@@ -122,7 +122,6 @@ non_verbal_cond:
       <<: *model_kwargs
   linear:
     output_size: 256
-
 
 main_module:
   use_module: true

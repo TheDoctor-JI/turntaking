@@ -196,8 +196,8 @@ def remove_words_from_dialog(dialog):
 if __name__ == "__main__":
     from os import listdir
 
-    extracted_path = "/ahc/work2/kazuyo-oni/projects/data/noxi"
-    session = "Paris_01"
+    extracted_path = "/home/eeyifanshen/e2e_audio_LLM/Datasets/raw/MultiModal/Noxi/NoXi_dataset/For_MMVAP_REPRODUCE"
+    session = "Augsburg_1_066"
 
     session = str(session)
     session_dir = join(extracted_path, session)

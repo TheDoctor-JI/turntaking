@@ -1,3 +1,7 @@
+
+import os, sys
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+
 import torch
 from torch.utils.data import Dataset
 from turntaking.dataload.utils import (
@@ -433,8 +437,13 @@ class DialogAudioDataset(Dataset):
 
         self.discrete_label = None
 
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            results = list(tqdm(executor.map(self._process_data, [self.dataset[i] for i in range(len(self.dataset["audio_path"]))]), total=len(self.dataset["audio_path"])))
+        # with concurrent.futures.ProcessPoolExecutor() as executor:
+        #     results = list(tqdm(executor.map(self._process_data, [self.dataset[i] for i in range(len(self.dataset["audio_path"]))]), total=len(self.dataset["audio_path"])))
+
+        results = []
+        for i in range(len(self.dataset["audio_path"])):
+            result = self._process_data(self.dataset[i])
+            results.append(result)
 
         for result in results:
             for key, value in result.items():
