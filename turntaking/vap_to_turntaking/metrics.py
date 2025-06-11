@@ -276,9 +276,9 @@ class TurnTakingMetrics(Metric):
             processed_probs, processed_labels = [], []
             if events.sum() > 0:
                 indices = torch.where(events)
-                p_events = p[indices]
+                p_events = p[indices]#Probabilities for having a shift
                 if label == 0:
-                    p_events = 1 - p_events  # reverse probabilities for negative cases
+                    p_events = 1 - p_events  # reverse probabilities for negative cases, so now p_events are probabilities for label 0, i.e., no shift
                 processed_probs.append(p_events)
                 processed_labels.append(torch.full_like(p_events, label))
             return processed_probs, processed_labels
@@ -286,8 +286,8 @@ class TurnTakingMetrics(Metric):
         # Split pos and neg for each dimension
         pos_0, pos_1 = pos.clone(), pos.clone()
         neg_0, neg_1 = neg.clone(), neg.clone()
-        pos_0[:, :, 1] = 0
-        pos_1[:, :, 0] = 0
+        pos_0[:, :, 1] = 0  # Keep only events where speaker 0 is next speaker: i.e., shift into speaker 0
+        pos_1[:, :, 0] = 0  # Keep only events where speaker 1 is next speaker: i.e., shift into speaker 1
         neg_0[:, :, 1] = 0
         neg_1[:, :, 0] = 0
 
@@ -520,10 +520,10 @@ class TurnTakingMetrics(Metric):
         ret = {
             "f1_hold_shift": f1_hs["f1_weighted"],
             "f1_predict_shift": f1_predict_shift,
-            "f1_predict_shift_0": f1_predict_shift_0,
+            "f1_predict_shift_0": f1_predict_shift_0, # Measures how well the model predicts whether speaker 0 will take the turn next while speaker 1 is still speaking
             "f1_predict_shift_1": f1_predict_shift_1,
             "f1_short_long": f1_short_long,
-            "f1_short_long_0": f1_short_long_0,
+            "f1_short_long_0": f1_short_long_0, # Measures how well the model predicts whether speaker 0 will deliver a short or a long utterance, at the onset of speaker 0's utterance
             "f1_short_long_1": f1_short_long_1,
         }
 
