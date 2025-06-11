@@ -10,11 +10,11 @@ info:
 train:
   trial_count: 10
   seed: null
-  max_epochs: 50
+  max_epochs: 7
   patience: 3
   optimizer: "AdamW"
   verbose: false
-  checkpoint: 1
+  checkpoint: 0.2
   device: "cuda:1"
   learning_rate: 3.63e-4 #3.63e-4
 
@@ -23,12 +23,13 @@ data:
   type: "sliding"
   sample_rate: 16000
   audio_mono: true
-  audio_duration: 1.0
-  flip_channels: false # If a single speaker model is to be trained, false is fine.
+  audio_duration: 1
+  ## This config causes the data loader to swap speaker1 and 2 for half of the data, thereby break the symmetry for va, va history, and non-verbal features to prevent them from overfitting to a specific speaker configuration.
+  flip_channels: true # If a single speaker model is to be trained, false is fine. # Only half the data will be used in a single speaker model.
   audio_normalize: true # If pre-processing is done beforehand, false is fine.
   audio_overlap: 0.5
   undersampling: false #discrete mode only
-  oversampling: true #discrete mode only
+  oversampling: true #discrete mode only # If oversampling is set to true, the data loader will oversample the minority class to balance the dataset.
   # VAD
   vad_hz: ${model.encoder.frame_hz}
   vad_horizon: 2

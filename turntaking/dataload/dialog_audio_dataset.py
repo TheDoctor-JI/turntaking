@@ -545,6 +545,7 @@ class DialogAudioDataset(Dataset):
                 if key in data:
                     ret[key] = data[key][dset_idx][:, start_vad_idx:end_vad_idx, :]
 
+        # Break the symmetry in the va frame and va history part so that the model doesn't overfit to speaker config
         if self.flip_channels and idx % 2:
             ret["vad"] = torch.stack((ret["vad"][:, :, 1], ret["vad"][:, :, 0]), dim=-1)
             ret["waveform_user1"], ret["waveform_user2"] = (

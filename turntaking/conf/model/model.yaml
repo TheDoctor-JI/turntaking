@@ -54,7 +54,7 @@ non_verbal_module: &NonVarbalModule
   type: 'transformer' #transformer, cnn, lstm, gru, conformer
   input_size: 64
   num_layers: 2
-  dropout: 0.4
+  dropout: 0.1
   model_kwargs:
     <<: *model_kwargs
 
@@ -80,44 +80,44 @@ audio_cond:
         use_module: false
         <<: *AudioModule
   va_cond:
-    use_module: false
+    use_module: true
     output_size: 256
-    use_history: false
+    use_history: true
     history_bins: 5
   audio_module:
     use_module: true
     <<: *AudioModule
 
 non_verbal_cond:
-  use_module: false
-  user1_input: false
+  use_module: true
+  user1_input: true
   user2_input: true
   gaze: 
     use_module: true 
     gaze_module:
-      use_module: false
+      use_module: true
       <<: *NonVarbalModule
   au: 
     use_module: true 
     au_module:
-      use_module: false
+      use_module: true
       <<: *NonVarbalModule
   head: 
     use_module: true
     head_module:
-      use_module: false
+      use_module: true
       <<: *NonVarbalModule
   pose: 
-    use_module: false
+    use_module: true
     pose_module:
-      use_module: false
+      use_module: true
       <<: *NonVarbalModule
   non_verbal_module:
     use_module: true
     type: 'transformer' #transformer, cnn, lstm, gru, conformer
     input_size: null
     num_layers: 2
-    dropout: 0.4
+    dropout: 0.1
     model_kwargs:
       <<: *model_kwargs
   linear:
@@ -128,7 +128,7 @@ main_module:
   type: 'transformer' #transformer, cnn, lstm, gru, conformer
   input_size: null
   num_layers: 2
-  dropout: 0.4
+  dropout: 0.1
   model_kwargs:
     <<: *model_kwargs
 

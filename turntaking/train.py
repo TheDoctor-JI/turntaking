@@ -36,11 +36,13 @@ class Train():
         self.model = Model(self.conf).to(self.conf["train"]["device"])
 
         if verbose == True:
-            self.model.model_summary
-            mean, var = self.model.inference_speed
-            print(f"inference speed: {mean}({var})")
-            # print(self.model)
+            # self.model.model_summary
+            # mean, var = self.model.inference_speed
+            # print(f"inference speed: {mean}({var})")
+            # # print(self.model)
             
+            print(f"Yifan edit: skip inf speed calculation")
+
             # exit(1)
             return
         

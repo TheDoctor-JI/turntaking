@@ -152,6 +152,7 @@ class NonVerbalCondition(nn.Module):
                     nn.LayerNorm(conf[flag][f"{flag}_module"]["input_size"]),
                 )
 
+                # # The same modality module is used for both speakers.
                 module = (
                     AR(conf[flag][f"{flag}_module"])
                     if conf[flag][f"{flag}_module"]["use_module"]
@@ -211,9 +212,17 @@ class NonVerbalCondition(nn.Module):
                     ln = getattr(self, f"{flag}_ln")
                     module1 = getattr(self, f"{flag}_module_user1")
                     module2 = getattr(self, f"{flag}_module_user2")
-                    z_1 = self.get_module_output(module1, user1)
-                    z_2 = self.get_module_output(module2, user2)
-                    z = ln(linear(z_1 + z_2))
+
+                    # # Old, bugged version
+                    # z_1 = self.get_module_output(module1, user1)
+                    # z_2 = self.get_module_output(module2, user2)
+                    # z = ln(linear(z_1 + z_2))
+
+                    # # Yifan corrected version
+                    z_1 = self.get_module_output(module1, linear(user1))
+                    z_2 = self.get_module_output(module2, linear(user2))
+                    z = ln(z_1 + z_2)
+
                 elif self.conf["user1_input"]:
                     user1 = kwargs[f"{flag}_user1"]
                     module1 = getattr(self, f"{flag}_module_user1")
