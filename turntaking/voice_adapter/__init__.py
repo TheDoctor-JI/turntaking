@@ -1,2 +1,2 @@
-from .vap import ActivityEmb, VAP, VAPLabel
+from .voice_adapter import VoiceAdapter
 
