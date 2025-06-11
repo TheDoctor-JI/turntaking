@@ -24,6 +24,7 @@ from turntaking.model import Model
 from turntaking.test import Test
 from turntaking.utils import to_device, repo_root, everything_deterministic, write_json, set_seed, set_debug_mode
 from turntaking.dataload import DialogAudioDM
+import shutil
 
 everything_deterministic()
 warnings.simplefilter("ignore")
@@ -165,12 +166,43 @@ def main(cfg: DictConfig) -> None:
         df = df[['model', 'score_json_path'] + [col for col in df.columns if col not in ['model', 'score_json_path']]]
         return df
     
+    
+    def copy_config_files(output_dir):
+        """Copy configuration files to output directory for reference"""
+        config_dir = join(dirname(__file__), "conf")
+        
+        # Copy main config.yaml
+        config_src = join(config_dir, "config.yaml")
+        if os.path.exists(config_src):
+            shutil.copy2(config_src, join(output_dir, "config.yaml"))
+        
+        # Copy model.yaml
+        model_src = join(config_dir, "model", "model.yaml")
+        if os.path.exists(model_src):
+            shutil.copy2(model_src, join(output_dir, "model.yaml"))
+        
+        # Copy events.yaml if it exists
+        events_src = join(config_dir, "events", "events.yaml")
+        if os.path.exists(events_src):
+            shutil.copy2(events_src, join(output_dir, "events.yaml"))
+    
+
+
+
     cfg_dict = dict(OmegaConf.to_object(cfg))
 
     if cfg_dict["info"]["debug"]:
         set_debug_mode(cfg_dict)
         cfg_dict["info"]["dir_name"] = "debug"
+
+
     
+    # Get user input for nickname
+    nickname = input("Enter a nickname for this training run: ").strip()
+    if not nickname:
+        nickname = "unnamed"
+    
+
     train = Train(cfg_dict, None, None, True)
 
     dm = DialogAudioDM(**cfg_dict["data"])
@@ -180,16 +212,22 @@ def main(cfg: DictConfig) -> None:
     id = datetime.datetime.now().strftime("%H%M%S")
     d = datetime.datetime.now().strftime("%Y_%m_%d")
 
+
+    output_parent_folder = os.path.join(repo_root(), "output", f"{nickname}_{d}_{id}")
+    os.makedirs(output_parent_folder, exist_ok=True)
+    copy_config_files(output_parent_folder)  # Copy the shared config/model files to output directory
+
     # Run
     for i in range(cfg_dict["train"]["trial_count"]):
         ### Preparation ###
-        if cfg_dict["info"]["dir_name"] == None:
-            output_dir = os.path.join(repo_root(), "output", d, id, str(i).zfill(2))
-        else:
-            output_dir = os.path.join(repo_root(), "output", cfg_dict["info"]["dir_name"], str(i).zfill(2))
+
+        # Create subdirectory for each trial
+        output_dir = os.path.join(output_parent_folder, str(i).zfill(2))
+
         # output_dir = os.path.join(repo_root(), "output", d, id, str(i).zfill(2))
         output_path = os.path.join(output_dir, "model.pt")
         os.makedirs(output_dir, exist_ok=True)
+
         set_seed(i)
 
         ### Train ###
@@ -206,17 +244,13 @@ def main(cfg: DictConfig) -> None:
 
         score_json_path.append(join(output_dir, "score.json"))
 
-    if cfg_dict["info"]["dir_name"] == None:
-        output_dir = os.path.join(repo_root(), "output", d, id)
-    else:
-        output_dir = os.path.join(repo_root(), "output", cfg_dict["info"]["dir_name"])
-    df = compile_scores(score_json_path, output_dir)
+    df = compile_scores(score_json_path, output_parent_folder)
     print("-" * 60)
-    print(f"Output Final Score -> {join(output_dir, 'final_score.csv')}")
+    print(f"Output Final Score -> {join(output_parent_folder, 'final_score.csv')}")
     print(df)
     print("-" * 60)
-    write_json(cfg_dict, os.path.join(output_dir, "log.json")) # log file
-    df.to_csv(join(output_dir, "final_score.csv"), index=False)
+    write_json(cfg_dict, os.path.join(output_parent_folder, "log.json")) # log file
+    df.to_csv(join(output_parent_folder, "final_score.csv"), index=False)
 
 
 if __name__ == "__main__":

@@ -80,9 +80,9 @@ audio_cond:
         use_module: false
         <<: *AudioModule
   va_cond:
-    use_module: true
+    use_module: false
     output_size: 256
-    use_history: true
+    use_history: false
     history_bins: 5
   audio_module:
     use_module: true

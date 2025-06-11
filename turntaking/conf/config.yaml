@@ -5,7 +5,7 @@ defaults:
 
 info:
   debug: false
-  dir_name: 'training_output'
+  dir_name: null
 
 train:
   trial_count: 10
@@ -15,7 +15,7 @@ train:
   optimizer: "AdamW"
   verbose: false
   checkpoint: 1
-  device: "cuda:0"
+  device: "cuda:1"
   learning_rate: 3.63e-4 #3.63e-4
 
 data:
