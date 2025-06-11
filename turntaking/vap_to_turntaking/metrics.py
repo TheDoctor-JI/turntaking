@@ -286,8 +286,8 @@ class TurnTakingMetrics(Metric):
         # Split pos and neg for each dimension
         pos_0, pos_1 = pos.clone(), pos.clone()
         neg_0, neg_1 = neg.clone(), neg.clone()
-        pos_0[:, :, 1] = 0  # Keep only events where speaker 0 is next speaker: i.e., shift into speaker 0
-        pos_1[:, :, 0] = 0  # Keep only events where speaker 1 is next speaker: i.e., shift into speaker 1
+        pos_0[:, :, 1] = 0  # Keep only events where speaker 0 is next speaker: i.e., shift into speaker 0 (user 1)
+        pos_1[:, :, 0] = 0  # Keep only events where speaker 1 is next speaker: i.e., shift into speaker 1 (user 2)
         neg_0[:, :, 1] = 0
         neg_1[:, :, 0] = 0
 

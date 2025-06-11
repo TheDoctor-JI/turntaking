@@ -137,7 +137,7 @@ class Noxi(datasets.GeneratorBasedBuilder):
             user1_audio_path = audio_path.replace("audio_mix", "audio_expert")
             user2_audio_path = audio_path.replace("audio_mix", "audio_novice")
             mutimodal_user1_path = audio_path.replace("audio_mix", "non_varbal_expert")
-            mutimodal_user2_path = audio_path.replace("audio_mix", "non_varbal_novice")
+            mutimodal_user2_path = audio_path.replace("audio_mix", "non_varbal_novice") #Novice is user 2
             # omit words
             # dialog = remove_words_from_dialog(dialog)
             yield f"{session}", {
