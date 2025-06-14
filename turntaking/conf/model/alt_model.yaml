@@ -35,6 +35,14 @@ model_kwargs: &model_kwargs
     use_pos_emb: false  # false == AliBI
     max_context: null # no max context if use_pos_emb=false
     use_pre_ln: true # Pre-LN Transformer
+  TransformerDecoder:
+    num_heads: 4
+    dff_k: 3
+    activation: "GELU"
+    use_pos_emb: false  # false == AliBI
+    max_context: null # no max context if use_pos_emb=false
+    use_pre_ln: true # Pre-LN Transformer
+
   Conformer:
     num_heads: 4
     dff_k: 1
@@ -44,6 +52,15 @@ model_kwargs: &model_kwargs
 
 audio_module: &AudioModule
   type: 'transformer' #transformer, cnn, lstm, gru, conformer
+  input_size: 256
+  num_layers: 2
+  dropout: 0.1
+  model_kwargs:
+    <<: *model_kwargs
+
+
+audio_module_decoder: &AudioModuleDecoder
+  type: 'transformer_decoder' # changed from 'transformer' to 'transformer_decoder'
   input_size: 256
   num_layers: 2
   dropout: 0.1
@@ -86,7 +103,8 @@ audio_cond:
     history_bins: 5
   audio_module:
     use_module: true
-    <<: *AudioModule
+    # <<: *AudioModule
+    <<: *AudioModuleDecoder
 
 non_verbal_cond:
   use_module: false

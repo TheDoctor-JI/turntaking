@@ -6,11 +6,14 @@ import pytorch_lightning as pl
 from omegaconf import OmegaConf
 import einops
 from einops.layers.torch import Rearrange
+import os
 
 from turntaking.models import Encoder, Encoder_Separated, AR
 from turntaking.utils import to_device
 from turntaking.vap_to_turntaking import VAP, TurnTakingMetrics
 from torchinfo import summary
+
+from torchviz import make_dot
 
 class VadCondition(nn.Module):
     def __init__(self, conf):
@@ -69,7 +72,28 @@ class AudioCondition(nn.Module):
 
         z = None
         if encoder and self.conf["va_cond"]["use_module"]:
-            z = wc + vc[:, : wc.shape[1]]
+            # z = wc + vc[:, : wc.shape[1]]
+
+            # Use transformer decoder for cross-attention fusion
+            if self.conf["audio_module"]["type"] == "transformer_decoder":
+                # wc as decoder input, vc as encoder output for cross-attention
+                z = (
+                    self.audio_module(wc, encoder_output=vc)["z"]
+                    if not isinstance(self.audio_module, nn.Identity)
+                    else wc + vc[:, : wc.shape[1]]  # fallback to addition if Identity
+                )
+            else:
+                # Fallback to original addition for non-decoder models
+                z = wc + vc[:, : wc.shape[1]]
+                z = (
+                    self.audio_module(z)["z"]
+                    if not isinstance(self.audio_module, nn.Identity)
+                    else self.audio_module(z)
+                )
+
+            return z
+
+
         elif encoder:
             z = wc
         elif self.conf["va_cond"]["use_module"]:
@@ -320,13 +344,14 @@ class Net(nn.Module):
         return out
 
 
-class Model(pl.LightningModule):
+class AltModel(pl.LightningModule):
     def __init__(self, conf) -> None:
         super().__init__()
         self.conf = conf
 
-        if(self.conf['model_type'] != 'model'):
-            raise ValueError(f"Model type {self.conf['model_type']} is not supported for this class. Please set as 'model' to use the model defined by the previous paper.")
+
+        if(self.conf['model_type'] != 'alt_model'):
+            raise ValueError(f"Model type {self.conf['model_type']} is not supported for this class. Please set as 'alt_model' to use the model defined by us as an alternative")
 
         self.conf["model"]["vap"]["t_dim"] = int(
             self.conf["data"]["vad_hz"] * self.conf["data"]["audio_duration"]
@@ -429,12 +454,14 @@ class Model(pl.LightningModule):
             row_settings=["var_names"],
         )
 
-    @property
-    def inference_speed(self):
+    def inference_speed(self, repetition_cnt=1000, return_tensor = False):
+
+        audio_duration = self.conf["data"]["audio_duration"]
+
         frame_audio = int(
-            self.conf["data"]["sample_rate"] * self.conf["data"]["audio_duration"]
+            self.conf["data"]["sample_rate"] * audio_duration
         )
-        frame_vad = int(self.conf["data"]["vad_hz"] * self.conf["data"]["audio_duration"])
+        frame_vad = int(self.conf["data"]["vad_hz"] * audio_duration)
         inputs = {
             "waveform": torch.randn(self.conf["data"]["batch_size"], frame_audio),
             "va": torch.randn(self.conf["data"]["batch_size"], frame_vad, 2),
@@ -458,9 +485,9 @@ class Model(pl.LightningModule):
 
         execution_times = []
 
-        for _ in range(1000):
+        for _ in range(repetition_cnt):
             time_start = time.perf_counter()
-            self.net(**inputs)
+            output = self.net(**inputs)
             time_end = time.perf_counter()
 
             execution_times.append(time_end - time_start)
@@ -470,7 +497,12 @@ class Model(pl.LightningModule):
             execution_times
         )
 
-        return mean_time, variance
+
+        if return_tensor:
+            output_tensor = output["logits_vp"]
+            return mean_time, variance, output_tensor
+        else:
+            return mean_time, variance
 
     def init_metric(
         self,
@@ -608,6 +640,68 @@ class Model(pl.LightningModule):
         return out
 
 
+
+
+
+def visualize_model_architecture(model, output_dir="./visualizations"):
+    """
+    Visualize the model's computational graph using torchviz.
+    
+    Args:
+        output_dir (str): Directory to save the visualization
+    """
+    print(f"Creating computational graph visualization...")
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Initialize the model
+    model.train()  # Set to training mode to enable gradients
+    model.to(model.conf["train"]["device"])
+    
+    # Enable gradient computation explicitly
+    with torch.enable_grad():
+        # Make sure model parameters require gradients
+        for param in model.parameters():
+            param.requires_grad_(True)
+        
+        # Run a single forward pass to build the computational graph
+        print("Running forward pass to build computational graph...")
+        _, _, outputs = model.inference_speed(repetition_cnt=1, return_tensor=True)
+        
+        # Get the output tensor (assuming it's the last item in outputs if it's a tuple/list)
+        if isinstance(outputs, (tuple, list)):
+            output_tensor = outputs[-1] if hasattr(outputs[-1], 'grad_fn') else outputs[0]
+        else:
+            output_tensor = outputs
+        
+        # Ensure the output tensor requires gradients
+        if not output_tensor.requires_grad:
+            print("Output tensor doesn't require gradients, enabling...")
+            output_tensor.requires_grad_(True)
+        
+        # Create the computational graph visualization
+        if hasattr(output_tensor, 'grad_fn') and output_tensor.grad_fn is not None:
+            # Create visualization
+            dot = make_dot(output_tensor, params=dict(model.named_parameters()))
+            
+            # Save the visualization
+            output_path = os.path.join(output_dir, f"{model.__class__.__name__}_architecture")
+            
+            # Create output directory if it doesn't exist
+            os.makedirs(output_dir, exist_ok=True)
+
+            # Save as both PDF and PNG
+            dot.render(output_path, format='pdf', cleanup=True)
+            dot.render(output_path, format='png', cleanup=True)
+            
+            print(f"Computational graph saved to:")
+            print(f"  - {output_path}.pdf")
+            print(f"  - {output_path}.png")
+        else:
+            print("Warning: Could not create computational graph - output tensor has no gradient function")
+            print("This might happen if the operations don't support gradients")
+      
 def _test_model():
     from turntaking.utils import load_hydra_conf
 
@@ -617,6 +711,8 @@ def _test_model():
     model = Model(cfg_dict)
     print(model)
     model.val_metric = model.init_metric()
+    #Save a visualization of the model architecture to the current file's folder
+    visualize_model_architecture(model, output_dir= os.path.join(os.path.dirname(__file__), 'visualizations'))
 
 
 if __name__ == "__main__":

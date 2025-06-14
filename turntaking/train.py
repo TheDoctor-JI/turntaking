@@ -29,11 +29,26 @@ import shutil
 everything_deterministic()
 warnings.simplefilter("ignore")
 
+
+
+
+def get_model_class(cfg_dict):
+    """Get the appropriate model class based on configuration"""
+    if cfg_dict.get("model_type", "model") == "alt_model":
+        from turntaking.alt_model import AltModel
+        return AltModel
+    else:
+        from turntaking.model import Model
+        return Model
+
+
 class Train():
     def __init__(self, conf, dm, output_path, verbose=True) -> None:
         super().__init__()
         self.conf = conf
-        self.model = Model(self.conf).to(self.conf["train"]["device"])
+
+        ModelClass = get_model_class(self.conf)
+        self.model = ModelClass(self.conf).to(self.conf["train"]["device"])
 
         if verbose == True:
             # self.model.model_summary
@@ -108,7 +123,6 @@ class Train():
 
         return self.early_stopping.model
 
-
     def _create_optimizer(self):
         if self.conf["train"]["optimizer"] == "AdamW":
             return torch.optim.AdamW(self.model.parameters(), lr=self.conf["train"]["learning_rate"])
@@ -150,48 +164,14 @@ class Train():
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
-    def compile_scores(score_json_path, output_dir):
-        df = pd.DataFrame()
-        for i, path in enumerate(score_json_path):
-            with open(path, 'r') as f:
-                data = json.load(f)
-            temp_df = pd.json_normalize(data)
-            temp_df['model'] = f'model{i:02}'
-            temp_df['score_json_path'] = path
-            df = pd.concat([df, temp_df], ignore_index=True)
-        
-        avg_row = df.select_dtypes(include=[np.number]).mean()
-        avg_row['model'] = 'Average'
-        avg_row['score_json_path'] = f'{join(output_dir, "final_score.csv")}'
-        avg_df = pd.DataFrame([avg_row])
-        df = pd.concat([df, avg_df], ignore_index=True)
-        df = df[['model', 'score_json_path'] + [col for col in df.columns if col not in ['model', 'score_json_path']]]
-        return df
-    
-    
-    def copy_config_files(output_dir):
-        """Copy configuration files to output directory for reference"""
-        config_dir = join(dirname(__file__), "conf")
-        
-        # Copy main config.yaml
-        config_src = join(config_dir, "config.yaml")
-        if os.path.exists(config_src):
-            shutil.copy2(config_src, join(output_dir, "config.yaml"))
-        
-        # Copy model.yaml
-        model_src = join(config_dir, "model", "model.yaml")
-        if os.path.exists(model_src):
-            shutil.copy2(model_src, join(output_dir, "model.yaml"))
-        
-        # Copy events.yaml if it exists
-        events_src = join(config_dir, "events", "events.yaml")
-        if os.path.exists(events_src):
-            shutil.copy2(events_src, join(output_dir, "events.yaml"))
-    
-
-
 
     cfg_dict = dict(OmegaConf.to_object(cfg))
+
+
+    # Optional: Add logging to show which model is being used
+    model_type = "our alternative" if cfg_dict.get("model_type", "model") == "alt_model" else "previously proposed"
+    print(f"Using {model_type} model configuration")
+    
 
     if cfg_dict["info"]["debug"]:
         set_debug_mode(cfg_dict)
@@ -215,9 +195,9 @@ def main(cfg: DictConfig) -> None:
     d = datetime.datetime.now().strftime("%Y_%m_%d")
 
 
-    output_parent_folder = os.path.join(repo_root(), "output", f"{nickname}_{d}_{id}")
+    output_parent_folder = os.path.join(repo_root(), "output", f"({model_type})_{nickname}_{d}_{id}")
     os.makedirs(output_parent_folder, exist_ok=True)
-    copy_config_files(output_parent_folder)  # Copy the shared config/model files to output directory
+    write_json(cfg_dict, os.path.join(output_parent_folder, "log.json")) # log file for the config used to train
 
     # Run
     for i in range(cfg_dict["train"]["trial_count"]):
@@ -246,12 +226,32 @@ def main(cfg: DictConfig) -> None:
 
         score_json_path.append(join(output_dir, "score.json"))
 
+
+    def compile_scores(score_json_path, output_dir):
+        df = pd.DataFrame()
+        for i, path in enumerate(score_json_path):
+            with open(path, 'r') as f:
+                data = json.load(f)
+            temp_df = pd.json_normalize(data)
+            temp_df['model'] = f'model{i:02}'
+            temp_df['score_json_path'] = path
+            df = pd.concat([df, temp_df], ignore_index=True)
+        
+        avg_row = df.select_dtypes(include=[np.number]).mean()
+        avg_row['model'] = 'Average'
+        avg_row['score_json_path'] = f'{join(output_dir, "final_score.csv")}'
+        avg_df = pd.DataFrame([avg_row])
+        df = pd.concat([df, avg_df], ignore_index=True)
+        df = df[['model', 'score_json_path'] + [col for col in df.columns if col not in ['model', 'score_json_path']]]
+        return df
+    
+
+
     df = compile_scores(score_json_path, output_parent_folder)
     print("-" * 60)
     print(f"Output Final Score -> {join(output_parent_folder, 'final_score.csv')}")
     print(df)
     print("-" * 60)
-    write_json(cfg_dict, os.path.join(output_parent_folder, "log.json")) # log file
     df.to_csv(join(output_parent_folder, "final_score.csv"), index=False)
 
 

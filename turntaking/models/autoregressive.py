@@ -4,6 +4,7 @@ import torch.nn as nn
 from turntaking.models.transformer import Transformer
 from turntaking.models.conformer import Conformer
 from turntaking.models.cnn import CNN
+from turntaking.models.transformer_decoder import TransformerDecoder
 
 
 class AR(nn.Module):
@@ -55,6 +56,19 @@ class AR(nn.Module):
                 max_context=model_kwargs["Transformer"]["max_context"],
                 use_pre_ln=model_kwargs["Transformer"]["use_pre_ln"],
             )
+        elif ar == "transformer_decoder":
+            ret = TransformerDecoder(
+                input_size=self.dim,
+                dff_k=model_kwargs["TransformerDecoder"]["dff_k"],
+                num_layers=self.num_layers,
+                num_heads=model_kwargs["TransformerDecoder"]["num_heads"],
+                activation=model_kwargs["TransformerDecoder"]["activation"],
+                dropout=self.dropout,
+                use_pos_emb=model_kwargs["TransformerDecoder"]["use_pos_emb"],
+                max_context=model_kwargs["TransformerDecoder"]["max_context"],
+                use_pre_ln=model_kwargs["TransformerDecoder"]["use_pre_ln"],
+            )
+            
         elif ar == "conformer":
             ret = Conformer(
                 input_size=self.dim,
@@ -74,7 +88,7 @@ class AR(nn.Module):
 
         return ret
 
-    def forward(self, x, lengths=None, attention=False):
+    def forward(self, x, lengths=None, attention=False, encoder_output=None):
         ret = {}
         if self.ar_type == "transformer":
             x = self.ar(x, attention=attention)
@@ -82,6 +96,17 @@ class AR(nn.Module):
                 x, attn = x
                 ret["attn"] = attn
             ret["z"] = x
+
+        elif self.ar_type == "transformer_decoder":
+            # For transformer decoder, encoder_output should be provided
+            if encoder_output is None:
+                raise ValueError("TransformerDecoder requires encoder_output tensor")
+            x = self.ar(x, encoder_output, attention=attention)
+            if attention:
+                x, attn = x
+                ret["attn"] = attn
+            ret["z"] = x
+            
         elif self.ar_type == "conformer":
             x, lengths = self.ar(x, lengths)
             ret["z"] = x
