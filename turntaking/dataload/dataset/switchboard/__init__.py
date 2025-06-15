@@ -2,7 +2,8 @@ from os.path import join
 from datasets import load_dataset
 from turntaking.dataload.utils import repo_root, read_txt
 
-AUDIO_DIR = "/ahc/work2/kazuyo-oni/projects/data/switchboard/audio"
+# AUDIO_DIR = "/ahc/work2/kazuyo-oni/projects/data/switchboard/audio"
+AUDIO_DIR = "/home/eeyifanshen/e2e_audio_LLM/Datasets/raw/English/Switchboard-1/swb_ms98_transcriptions/sorted"
 
 DATASET_SCRIPT = join(repo_root(), "dataload/dataset/switchboard/switchboard.py")
 EXT = ".wav"

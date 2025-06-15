@@ -46,7 +46,7 @@ audio_module: &AudioModule
   type: 'transformer' #transformer, cnn, lstm, gru, conformer
   input_size: 256
   num_layers: 2
-  dropout: 0.1
+  dropout: 0.4
   model_kwargs:
     <<: *model_kwargs
 
@@ -54,7 +54,7 @@ non_verbal_module: &NonVarbalModule
   type: 'transformer' #transformer, cnn, lstm, gru, conformer
   input_size: 64
   num_layers: 2
-  dropout: 0.1
+  dropout: 0.4
   model_kwargs:
     <<: *model_kwargs
 
@@ -117,7 +117,7 @@ non_verbal_cond:
     type: 'transformer' #transformer, cnn, lstm, gru, conformer
     input_size: null
     num_layers: 2
-    dropout: 0.1
+    dropout: 0.4
     model_kwargs:
       <<: *model_kwargs
   linear:
@@ -128,7 +128,7 @@ main_module:
   type: 'transformer' #transformer, cnn, lstm, gru, conformer
   input_size: null
   num_layers: 2
-  dropout: 0.1
+  dropout: 0.4
   model_kwargs:
     <<: *model_kwargs
 

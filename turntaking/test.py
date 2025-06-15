@@ -30,6 +30,15 @@ everything_deterministic()
 warnings.simplefilter("ignore")
 
 
+def get_model_class(cfg_dict):
+    """Get the appropriate model class based on configuration"""
+    if cfg_dict.get("model_type", "model") == "alt_model":
+        from turntaking.alt_model import AltModel
+        return AltModel
+    else:
+        from turntaking.model import Model
+        return Model
+
 class Test:
     def __init__(self, conf, dm, model_path, output_dir=None, find_threshold = False):
         self.conf = conf
@@ -44,7 +53,9 @@ class Test:
         self.dm.change_frame_mode(True)
 
         self.model_path = model_path
-        self.model = Model(conf).to(conf["train"]["device"])
+
+        ModelClass = get_model_class(self.conf)
+        self.model = ModelClass(conf).to(conf["train"]["device"])
         self.model.load_state_dict(
             torch.load(model_path, map_location=conf["train"]["device"])
         )

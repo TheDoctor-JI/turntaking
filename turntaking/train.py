@@ -210,6 +210,7 @@ def main(cfg: DictConfig) -> None:
         output_path = os.path.join(output_dir, "model.pt")
         os.makedirs(output_dir, exist_ok=True)
 
+        # Static train-validation-test split, just changing the random seed here.
         set_seed(i)
 
         ### Train ###
