@@ -1,7 +1,7 @@
 
 
-model_type: &model_type_string "alt_model"
 # model_type: &model_type_string "alt_model"
+model_type: &model_type_string "model"
 
 defaults:
   - _self_
@@ -48,7 +48,7 @@ data:
   val_files: null
   test_files: null
   batch_size: 128
-  num_workers: 16
+  num_workers: 8
   # Label
   label_type: ${model.vap.type}
   bin_times: ${model.vap.bin_times}

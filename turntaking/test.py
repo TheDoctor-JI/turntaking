@@ -328,6 +328,88 @@ class Test:
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
+
+    cfg_dict = dict(OmegaConf.to_object(cfg))
+    debug = cfg_dict["info"]["debug"]
+    device = cfg_dict["train"]["device"]
+    model_dir_path = input("Please enter the relative path of the model file dir.: ")
+    model_dir_path = os.path.join(repo_root(), 'output', model_dir_path)
+
+
+    # Get user input for nickname (similar to train.py)
+    nickname = input("Enter a nickname for this testing run: ").strip()
+    if not nickname:
+        nickname = "unnamed_test"
+
+    with open(join(model_dir_path, "log.json")) as f:
+        cfg_dict = json.load(f)
+        cfg_dict["train"]["device"] = device
+        if debug:
+            set_debug_mode(cfg_dict)
+
+    # Get user input for dataset choice
+    dataset_choice = input("Choose dataset (noxi/switchboard/eald): ").strip().lower()
+    # Overwrite the dataset in cfg_dict based on user input
+    if dataset_choice in ["noxi", "switchboard", "eald"]:
+        cfg_dict["data"]["datasets"] = dataset_choice
+    else:
+        print(f"Invalid dataset choice: {dataset_choice}. Using default dataset.")
+
+    dm = DialogAudioDM(**cfg_dict["data"])
+    dm.setup(None)
+
+    score_json_path = []
+    id = datetime.datetime.now().strftime("%H%M%S")
+    d = datetime.datetime.now().strftime("%Y_%m_%d")
+
+    # Determine model type for output directory naming
+    model_type = "our alternative" if cfg_dict.get("model_type", "model") == "alt_model" else "previously proposed"
+    
+
+    # Create output directory similar to train.py
+    output_parent_folder = os.path.join(repo_root(), "output", f"TEST_({model_type})_{nickname}_{d}_{id}")
+    os.makedirs(output_parent_folder, exist_ok=True)
+    
+    # Save model path information
+    model_info = {
+        "model_dir_path": model_dir_path,
+        "test_timestamp": f"{d}_{id}",
+        "nickname": nickname,
+        "model_type": model_type
+    }
+    write_json(model_info, os.path.join(output_parent_folder, "model_info.json"))
+
+
+    # Run
+    for i in range(cfg_dict["train"]["trial_count"]):
+        ### Preparation ###
+        # Create subdirectory for each trial in the user-defined output directory
+        output_dir = os.path.join(output_parent_folder, str(i).zfill(2))
+
+        # if cfg_dict["info"]["dir_name"] == None:
+        #     output_dir = os.path.join(repo_root(), "output", d, id, str(i).zfill(2))
+        # else:
+        #     output_dir = os.path.join(repo_root(), "output", cfg_dict["info"]["dir_name"], str(i).zfill(2))
+
+        model_path = os.path.join(model_dir_path, str(i).zfill(2), "model.pt")
+        os.makedirs(output_dir, exist_ok=True)
+        set_seed(i)
+
+        ### Test ###
+        test = Test(cfg_dict, dm, model_path, output_dir, True)
+        score, turn_taking_probs, probs, events = test.test()
+        write_json(score, join(output_dir, "score.json"))
+
+        print("Saved score -> ", join(output_dir, "score.json"))
+
+        score_json_path.append(join(output_dir, "score.json"))
+
+    if cfg_dict["info"]["dir_name"] == None:
+        output_dir = os.path.join(repo_root(), "output", d, id)
+    else:
+        output_dir = os.path.join(repo_root(), "output", cfg_dict["info"]["dir_name"])
+    
+    
     def compile_scores(score_json_path, output_dir):
         df = pd.DataFrame()
         for i, path in enumerate(score_json_path):
@@ -346,54 +428,14 @@ def main(cfg: DictConfig) -> None:
         df = df[['model', 'score_json_path'] + [col for col in df.columns if col not in ['model', 'score_json_path']]]
         return df
     
-    cfg_dict = dict(OmegaConf.to_object(cfg))
-    debug = cfg_dict["info"]["debug"]
-    device = cfg_dict["train"]["device"]
-    model_dir_path = input("Please enter the path of the model file dir.: ")
-
-    with open(join(model_dir_path, "log.json")) as f:
-        cfg_dict = json.load(f)
-        cfg_dict["train"]["device"] = device
-        if debug:
-            set_debug_mode(cfg_dict)
-
-    dm = DialogAudioDM(**cfg_dict["data"])
-    dm.setup(None)
-
-    score_json_path = []
-    id = datetime.datetime.now().strftime("%H%M%S")
-    d = datetime.datetime.now().strftime("%Y_%m_%d")
-
-    # Run
-    for i in range(cfg_dict["train"]["trial_count"]):
-        ### Preparation ###
-        if cfg_dict["info"]["dir_name"] == None:
-            output_dir = os.path.join(repo_root(), "output", d, id, str(i).zfill(2))
-        else:
-            output_dir = os.path.join(repo_root(), "output", cfg_dict["info"]["dir_name"], str(i).zfill(2))
-        model_path = os.path.join(model_dir_path, str(i).zfill(2), "model.pt")
-        os.makedirs(output_dir, exist_ok=True)
-        set_seed(i)
-
-        ### Test ###
-        test = Test(cfg_dict, dm, model_path, output_dir, True)
-        score, turn_taking_probs, probs, events = test.test()
-        write_json(score, join(output_dir, "score.json"))
-
-        print("Saved score -> ", join(output_dir, "score.json"))
-
-        score_json_path.append(join(output_dir, "score.json"))
-
-    if cfg_dict["info"]["dir_name"] == None:
-        output_dir = os.path.join(repo_root(), "output", d, id)
-    else:
-        output_dir = os.path.join(repo_root(), "output", cfg_dict["info"]["dir_name"])
-    df = compile_scores(score_json_path, output_dir)
+    
+    df = compile_scores(score_json_path, output_parent_folder)
     print("-" * 60)
-    print(f"Output Final Score -> {join(output_dir, 'final_score.csv')}")
+    print(f"Output Final Score -> {join(output_parent_folder, 'final_score.csv')}")
+    print(f"Model Info -> {join(output_parent_folder, 'model_info.json')}")
     print(df)
     print("-" * 60)
-    df.to_csv(join(output_dir, "final_score.csv"), index=False)
+    df.to_csv(join(output_parent_folder, "final_score.csv"), index=False)
 
 
 if __name__ == "__main__":

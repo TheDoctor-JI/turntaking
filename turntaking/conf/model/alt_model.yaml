@@ -79,14 +79,14 @@ audio_cond:
   use_module: true
   encoder:
     <<: *Encoder
-    use_module: true
+    use_module: false
     module:
-      use_module: true
+      use_module: false
       <<: *AudioModule
   encoder_separated_audio:
-    use_module: false
+    use_module: true
     user1_input: false
-    user2_input: false
+    user2_input: true
     <<: *Encoder
     user_1: 
       module:
@@ -94,12 +94,12 @@ audio_cond:
         <<: *AudioModule
     user_2: 
       module:
-        use_module: false
+        use_module: true
         <<: *AudioModule
   va_cond:
     use_module: true
     output_size: 256
-    use_history: true
+    use_history: false
     history_bins: 5
   audio_module:
     use_module: true
