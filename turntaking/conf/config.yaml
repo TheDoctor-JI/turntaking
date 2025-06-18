@@ -26,8 +26,8 @@ train:
   learning_rate: 3.63e-4 #3.63e-4
 
 data:
-  datasets: "noxi" #switchboard, noxi, eald
-  # datasets: "switchboard" #switchboard, noxi, eald
+  # datasets: "noxi" #switchboard, noxi, eald
+  datasets: "switchboard" #switchboard, noxi, eald
   type: "sliding"
   sample_rate: 16000
   audio_mono: true

@@ -441,7 +441,7 @@ def main(cfg: DictConfig) -> None:
     ovhs_detailed_analysis_results = []
 
     # Process each session for detailed overlapping event analysis
-    for d, s in tqdm(zip(vad[:2], sessions[:2]), desc="Detailed OVHS Analysis"):  # Limit to first 10 for testing
+    for d, s in tqdm(zip(vad[:], sessions[:]), desc="Detailed OVHS Analysis"):  # Limit to first 10 for testing
         # Get audio file path from dataset
         audio_info = get_audio_path_for_session(s, dm)
         
