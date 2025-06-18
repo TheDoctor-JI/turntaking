@@ -273,6 +273,7 @@ class OverlapHoldShift:
                         pre_match_oh[b, pre_start_window : s[cur], ns] = 1.0
 
                 # Set main event window (during overlap, with padding)
+                # From this we can tell that, even if the overlap is long, the event duration only covers the first self.metric_dur frames (of course including the pad frames)
                 end = s[cur] + self.metric_pad + self.metric_dur
                 if max_frame is not None and end >= max_frame:
                     continue

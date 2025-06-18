@@ -163,3 +163,4 @@ turntaking/corpus_analysis.py
 run.sh
 
 training_output
+event_analysis
