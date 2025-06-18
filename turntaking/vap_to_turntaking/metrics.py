@@ -21,6 +21,7 @@ class F1_Hold_Shift(Metric):
         probs, labels = [], []
 
         for next_speaker in [0, 1]:
+            # ws: Places where the model should predict a shift into next_speaker
             ws = torch.where(shift[..., next_speaker])
             if len(ws[0]) > 0:
                 tmp_probs = p[ws][..., next_speaker]
@@ -28,11 +29,16 @@ class F1_Hold_Shift(Metric):
                 probs.append(tmp_probs)
                 labels.append(tmp_lab)
 
+            # wh: places where the model should predict a hold for next_speaker
             # Hold label -> 0
             # Hold prob -> 1 - p  # opposite guess
             wh = torch.where(hold[..., next_speaker])
             if len(wh[0]) > 0:
-                # complement in order to be combined with shifts
+                # complement in order to be combined with shifts.
+                # By doing this, we make the output more consistent with standard positive-negative classification scheme:
+                # positive class: shift probs should be high
+                # negative class: hold probs should be low
+                # Then we apply a threshold to the probabilities
                 tmp_probs = 1 - p[wh][..., next_speaker]
                 tmp_lab = torch.zeros_like(tmp_probs, dtype=torch.long)
                 probs.append(tmp_probs)
@@ -115,16 +121,19 @@ class TurnTakingMetrics(Metric):
         hs_kwargs,
         bc_kwargs,
         metric_kwargs,
+        ovhs_kwargs=None,  # NEW: Add overlapping hold/shift kwargs
         threshold_shift_hold=0.5,
         threshold_pred_shift=0.5,
         threshold_pred_ov=0.5,
         threshold_short_long=0.5,
         threshold_bc_pred=0.5,
+        threshold_ovhs=0.5,  # NEW: Add overlapping hold/shift threshold
         shift_hold_pr_curve=False,
         bc_pred_pr_curve=False,
         shift_pred_pr_curve=False,
         ov_pred_pr_curve=False,
         long_short_pr_curve=False,
+        ovhs_pr_curve=False,  # NEW: Add overlapping hold/shift PR curve
         frame_hz=100,
         dist_sync_on_step=False,
         seed=42
@@ -139,6 +148,9 @@ class TurnTakingMetrics(Metric):
         # self.f1: class to provide f1-weighted as well as other stats tp,fp,support, etc...
         self.hs = F1_Hold_Shift(threshold=threshold_shift_hold)
 
+        # NEW: Add overlapping hold/shift metrics
+        self.ovhs = F1_Hold_Shift(threshold=threshold_ovhs)
+        
         def create_f1_score(threshold, num_classes=2, multiclass=True, average="weighted"):
             return F1Score(
                 threshold=threshold,
@@ -183,11 +195,19 @@ class TurnTakingMetrics(Metric):
         if self.pr_curve_long_short:
             self.long_short_pr = PrecisionRecallCurve(pos_label=1)
 
+
+        # NEW: Add overlapping hold/shift PR curve
+        self.pr_curve_ovhs = ovhs_pr_curve
+        if self.pr_curve_ovhs:
+            self.ovhs_pr = PrecisionRecallCurve(pos_label=1)
+
+
         # Extract the frames of interest for the given metrics
         self.eventer = TurnTakingEvents(
             hs_kwargs=hs_kwargs,
             bc_kwargs=bc_kwargs,
             metric_kwargs=metric_kwargs,
+            ovhs_kwargs=ovhs_kwargs,  # NEW: Pass overlapping hold/shift kwargs
             frame_hz=frame_hz,
             seed = self.seed
         )
@@ -259,7 +279,20 @@ class TurnTakingMetrics(Metric):
             if self.pr_curve_shift_pred:
                 self.long_short_pr.update(torch.cat(probs), torch.cat(labels).long())
 
-    
+    def update_ovhs(self, p_ovhs, ov_shift, ov_hold):
+        """
+        Update overlapping hold/shift metrics.
+        
+        Args:
+            p_ovhs: Overlapping hold/shift probabilities (silence-based marginalization)
+            ov_shift: Overlapping shift events 
+            ov_hold: Overlapping hold events
+        """
+        self.ovhs.update(p_ovhs, hold=ov_hold, shift=ov_shift)
+
+        if self.pr_curve_ovhs:
+            self.ovhs_pr.update(self.ovhs.probs, self.ovhs.labels)
+        
     def update_predict_shift(self, p, pos, neg):
         """
         Predict upcoming speaker shift. The events pos/neg are given for the
@@ -428,6 +461,7 @@ class TurnTakingMetrics(Metric):
     def reset(self):
         super().reset()
         self.hs.reset()
+        self.ovhs.reset()  # NEW: Reset overlapping hold/shift metrics
         self.predict_shift.reset()
         self.predict_ov.reset()
         self.short_long.reset()
@@ -435,6 +469,9 @@ class TurnTakingMetrics(Metric):
         if self.pr_curve_shift_hold:
             self.shift_hold_pr.reset()
 
+        if self.pr_curve_ovhs:  # NEW: Reset overlapping hold/shift PR curve
+            self.ovhs_pr.reset()
+            
         if self.pr_curve_bc_pred:
             self.bc_pred_pr.reset()
 
@@ -448,11 +485,12 @@ class TurnTakingMetrics(Metric):
             self.long_short_pr.reset()
 
  
-    def update(self, p, bc_pred_probs=None, events=None, va=None):
+    def update(self, p, bc_pred_probs=None, p_ovhs=None, events=None, va=None):
         """
         p:              tensor, next_speaker probability. Must take into account current speaker such that it can be used for pre-shift/hold, backchannel-pred/ongoing
         pre_probs:      tensor, on active next speaker probability for independent
         bc_pred_probs:  tensor, Special probability associated with a backchannel prediction
+        p_ovhs:         tensor, Overlapping hold/shift probabilities (NEW)
         events:         dict, containing information about the events in the sequences
         vad:            tensor, VAD activity. Only used if events is not given.
 
@@ -486,6 +524,14 @@ class TurnTakingMetrics(Metric):
             p, pos=events["predict_shift_pos"], neg=events["predict_shift_neg"]
         )
 
+
+        # NEW: OVERLAPPING SHIFT/HOLD
+        if p_ovhs is not None and "ov_shift" in events and "ov_hold" in events:
+            self.update_ovhs(
+                p_ovhs, ov_shift=events["ov_shift"], ov_hold=events["ov_hold"]
+            )
+
+
         # Predict Overlaps
         self.update_predict_overlap(
             p, pos=events["predict_shift_ov_pos"], neg=events["predict_shift_ov_neg"]
@@ -510,6 +556,7 @@ class TurnTakingMetrics(Metric):
 
     def compute(self):
         f1_hs = self.hs.compute()
+        f1_ovhs = self.ovhs.compute()  # NEW: Compute overlapping hold/shift metrics
         f1_predict_shift = self.predict_shift.compute()
         f1_predict_shift_0 = self.predict_shift_0.compute()
         f1_predict_shift_1 = self.predict_shift_1.compute()
@@ -519,6 +566,7 @@ class TurnTakingMetrics(Metric):
 
         ret = {
             "f1_hold_shift": f1_hs["f1_weighted"],
+            "f1_ovhs": f1_ovhs["f1_weighted"],  # NEW: Add overlapping hold/shift F1
             "f1_predict_shift": f1_predict_shift,
             "f1_predict_shift_0": f1_predict_shift_0, # Measures how well the model predicts whether speaker 0 will take the turn next while speaker 1 is still speaking
             "f1_predict_shift_1": f1_predict_shift_1,
@@ -560,8 +608,18 @@ class TurnTakingMetrics(Metric):
         if self.pr_curve_long_short:
             ret["pr_curve_long_short"] = self.long_short_pr.compute()
 
+
+        if self.pr_curve_ovhs:  # NEW: Add overlapping hold/shift PR curve
+            ret["pr_curve_ovhs"] = self.ovhs_pr.compute()
+
+
         ret["shift"] = f1_hs["shift"]
         ret["hold"] = f1_hs["hold"]
+        ret["ov_shift"] = f1_ovhs["shift"]  # NEW: Add overlapping shift metrics
+        ret["ov_hold"] = f1_ovhs["hold"]    # NEW: Add overlapping hold metrics
+        
+
+
         return ret
 
 

@@ -137,26 +137,45 @@ class HoldShift:
         Used in practice to create VAD -> FILLED_VAD, where filled vad combines
         consecutive segments of activity from the same speaker as a single
         chunk.
+        This function is always called with the hold template. Therefore, what it does is that it fills the "holes" in consecutive segments of the same speaker with 1s. This would imply that, long mutual silences surrounded by the same speaker will also be filled with 1s.
         """
-
+        # Copy the raw vad data
         filled_vad = vad.clone()
+        # Loop over dialogue states for each batch
         for b in range(ds.shape[0]):
+
+            # Find consecutive segments of the same dialogue state
+            # s: start indices, d: durations, v: values (vad)
+            # e.g. s = [0, 10, 20], d = [10, 5, 15], v = [1, 0, 1]
+            # means speaker is active for 10 frames, then silent for 5 frames,
+            # and then active for 15 frames.
             s, d, v = find_island_idx_len(ds[b])
-            if len(v) < 3:
+            if len(v) < 3: #If no triad for this batch, skip
                 continue
+
+            # Create traids of consecutive segments for subsequent matching
             triads = v.unfold(0, size=3, step=1)
+
+            # Match triads with the template. Note that we create match for both versions of the template.
             next_speaker, steps = torch.where(
                 (triads == template.unsqueeze(1)).sum(-1) == 3
             )
+
+            # Using the match results, we fill the filled_vad
+            # ns: speaker at the last segment of the triad
+            # pre: the first segment of the triad, i.e., the segment before the mutual silence
             for ns, pre in zip(next_speaker, steps):
+
+                # Pre gives the starting, first segment of each matched triad. Add 1 and we retrieve the corresponding start index and frame duration of the mutual silence segment from s and d.
                 cur = pre + 1
-                # Fill the matching template
+                # Then we change the corresponding speaker's voice activity during the mutual silence to 1, thereby "filling" the silence
                 filled_vad[b, s[cur] : s[cur] + d[cur], ns] = 1.0
+
         return filled_vad
 
     def match_template(
         self,
-        vad,
+        vad,#This is actually the filled vad, i.e., annotated version of the vad data
         ds,
         template,
         pre_cond_frames,
@@ -172,6 +191,7 @@ class HoldShift:
             match_oh:       torch.Tensor (B, N, 2), where the last bin corresponds to the next speaker
         """
 
+        # Check which template is used
         hold_cond = template[0, 0] == template[0, -1]
 
         match_oh = torch.zeros((*ds.shape, 2), device=ds.device, dtype=torch.float)
@@ -190,11 +210,13 @@ class HoldShift:
             )
 
         for b in range(ds.shape[0]):
-            s, d, v = find_island_idx_len(ds[b])
 
+            # Same as fill_template, collapse dialogue states into consecutive segments
+            s, d, v = find_island_idx_len(ds[b])
             if len(v) < 3:
                 continue
 
+            # Match with a specific template
             triads = v.unfold(0, size=3, step=1)
             next_speaker, steps = torch.where(
                 (triads == template.unsqueeze(1)).sum(-1) == 3
@@ -212,7 +234,8 @@ class HoldShift:
                 post = pre_step + 2
 
                 # Silence Condition: if the current step is silent (shift with gap and holds)
-                # then we only care about silences over a certain duration.
+                # then we only care about silences over a certain duration: the sum of metric pad and metric dur 
+                # This made sure that subsequently, the match_oh tensor will not go beyond the silence period
                 if v[cur] == 1 and d[cur] < self.min_silence:
                     continue
 
@@ -226,13 +249,15 @@ class HoldShift:
                 #     continue
 
                 # pre_condition
-                # using a filled version of the VAD signal we check wheather
+                # using a filled version of the VAD signal we check whether
                 # only the 'previous speaker, ps' was active. This will then include
                 # activity from that speaker deliminated by silence/pauses/holds
                 pre_start = s[cur] - pre_cond_frames
 
                 # print('pre_start: ', pre_start, s[cur])
+                # Within the pre_cond_frames, the previous speaker must be active, either genuinely or by filling
                 pre_cond1 = vad[b, pre_start : s[cur], ps].sum() == pre_cond_frames
+                #Within pre_cond_frames, the non-previous speaker must not be active at all
                 not_ps = 0 if ps == 1 else 1
                 pre_cond2 = vad[b, pre_start : s[cur], not_ps].sum() == 0
                 pre_cond = torch.logical_and(pre_cond1, pre_cond2)
@@ -247,6 +272,7 @@ class HoldShift:
                 # single speaker post
                 post_start = s[post]
                 post_end = post_start + post_cond_frames
+                # During the post_cond_frames, the next speaker must be active either genuinely or by filling, and the non-next speaker must not be active at all
                 post_cond1 = vad[b, post_start:post_end, ns].sum() == post_cond_frames
                 post_cond2 = vad[b, post_start:post_end, nos].sum() == 0
                 post_cond = torch.logical_and(post_cond1, post_cond2)
@@ -275,6 +301,7 @@ class HoldShift:
                 if (s[cur] + self.metric_pad) < min_context:
                     continue
 
+                # This pre-match region is used for other kinds of modeling
                 if pre_match:
                     pre_match_oh[
                         b, s[cur] - self.metric_pre_label_dur : s[cur], ns
@@ -290,7 +317,9 @@ class HoldShift:
                     if end >= max_frame:
                         continue
 
+                # Only do prediction for a specific region. Here we note down the VA frames where a shift into speaker NS should be predicted.
                 match_oh[b, s[cur] + self.metric_pad : end, ns] = 1.0
+                # Region of the middle segment
                 event_location[b, s[cur] : s[post], ns] = 1.0
 
                 if onset_match:
@@ -377,6 +406,7 @@ class HoldShift:
             self.shift_overlap_template = self.shift_overlap_template.to(vad.device)
             self.hold_template = self.hold_template.to(vad.device)
 
+        # We fill with the hold template only if the filled_vad is not provided.
         if filled_vad is None:
             filled_vad = self.fill_template(vad, ds, self.hold_template)
 

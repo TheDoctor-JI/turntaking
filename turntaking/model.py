@@ -480,11 +480,13 @@ class Model(pl.LightningModule):
         threshold_pred_ov=None,
         threshold_short_long=None,
         threshold_bc_pred=None,
+        threshold_ovhs=None,
         shift_hold_pr_curve=False,
         bc_pred_pr_curve=False,
         shift_pred_pr_curve=False,
         ov_pred_pr_curve=False,
         long_short_pr_curve=False,
+        ovhs_pr_curve=False,
     ):
         if conf is None:
             conf = self.conf
@@ -504,20 +506,28 @@ class Model(pl.LightningModule):
         if threshold_short_long is None:
             threshold_short_long = conf["events"]["threshold"]["SL"]
 
+        # NEW: Add OVHS threshold
+        if threshold_ovhs is None:
+            threshold_ovhs = conf["events"]["threshold"]["OVHS"]
+
+
         metric = TurnTakingMetrics(
             hs_kwargs=conf["events"]["SH"],
             bc_kwargs=conf["events"]["BC"],
+            ovhs_kwargs=conf["events"]["OVHS"],  # NEW: Add OVHS kwargs
             metric_kwargs=conf["events"]["metric"],
             threshold_shift_hold=threshold_shift_hold,
             threshold_pred_shift=threshold_pred_shift,
             threshold_pred_ov=threshold_pred_ov,
             threshold_short_long=threshold_short_long,
             threshold_bc_pred=threshold_bc_pred,
+            threshold_ovhs=threshold_ovhs,  # NEW: Add OVHS threshold
             shift_hold_pr_curve=shift_hold_pr_curve,
             shift_pred_pr_curve=shift_pred_pr_curve,
             ov_pred_pr_curve=ov_pred_pr_curve,
             bc_pred_pr_curve=bc_pred_pr_curve,
             long_short_pr_curve=long_short_pr_curve,
+            ovhs_pr_curve=ovhs_pr_curve,  # NEW: Add OVHS PR curve
             frame_hz=self.frame_hz,
         )
         metric = metric.to(self.device)

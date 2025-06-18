@@ -103,6 +103,7 @@ def main(cfg: DictConfig) -> None:
         hs_kwargs=cfg_dict["events"]["SH"],
         bc_kwargs=cfg_dict["events"]["BC"],
         metric_kwargs=cfg_dict["events"]["metric"],
+        ovhs_kwargs=cfg_dict["events"].get("OVHS", None),  # NEW: Add OVHS kwargs
         frame_hz=FRAME_HZ,
     )
 
@@ -114,6 +115,12 @@ def main(cfg: DictConfig) -> None:
     all_bc0 = []
     all_bc1 = []
 
+    # NEW: Add OVHS tracking
+    all_ov_shift0 = []
+    all_ov_shift1 = []
+    all_ov_hold0 = []
+    all_ov_hold1 = []
+    
     # vad = dm.test_dset.data["vad"]
     # sessions = dm.test_dset.data["session"]
 
@@ -138,6 +145,16 @@ def main(cfg: DictConfig) -> None:
             neg_values = [-x for x in values]
             shift.setdefault(key, []).extend(neg_values)
 
+
+        # NEW: Process OVHS events if available
+        ov_shift = {}
+        ov_hold = {}
+        if eventer.OVHS is not None and hasattr(eventer, 'ov_tt'):
+            ov_shift = find_continuous_ones(eventer.ov_tt["ov_shift_dur"])
+            ov_hold = find_continuous_ones(eventer.ov_tt["ov_hold_dur"])
+
+
+
         all_shift0 += shift[0]
         all_shift1 += shift[1]
         all_hold0 += hold[0]
@@ -145,10 +162,39 @@ def main(cfg: DictConfig) -> None:
         all_bc0 += bc[0]
         all_bc1 += bc[1]
 
+
+        
+        # NEW: Update OVHS tracking
+        all_ov_shift0 += ov_shift.get(0, [])
+        all_ov_shift1 += ov_shift.get(1, [])
+        all_ov_hold0 += ov_hold.get(0, [])
+        all_ov_hold1 += ov_hold.get(1, [])
+
+
         all_ov_count[0] += len(ov[0])
         all_ov_count[1] += len(ov[1])
 
-        results.append([s, shift[0], shift[1], shift[0] + shift[1], hold[0], hold[1], hold[0] + hold[1], bc[0], bc[1], bc[0] + bc[1]])
+        results.append(
+            [
+                s, 
+                shift[0], 
+                shift[1], 
+                shift[0] + shift[1], 
+
+                hold[0], 
+                hold[1], 
+                hold[0] + hold[1], 
+
+                bc[0], 
+                bc[1], 
+                bc[0] + bc[1],
+                # NEW: Add OVHS results
+                ov_shift.get(0, []), ov_shift.get(1, []), 
+                ov_shift.get(0, []) + ov_shift.get(1, []),
+                ov_hold.get(0, []), ov_hold.get(1, []), 
+                ov_hold.get(0, []) + ov_hold.get(1, [])
+            ]
+        )
 
     shift_ov_ratio_0 = all_ov_count[0] / len(all_shift0)
     shift_ov_ratio_1 = all_ov_count[1] / len(all_shift1)
@@ -156,7 +202,15 @@ def main(cfg: DictConfig) -> None:
     print(f"Shift to OV Ratio for 1: {shift_ov_ratio_1}")
     exit(1)
 
-    df = pd.DataFrame(results, columns=['session', 'shift0', 'shift1', 'shift', 'hold0', 'hold1', 'hold', 'bc0', 'bc1', "bc"])
+    df = pd.DataFrame(results, columns=[
+        'session', 
+        'shift0', 'shift1', 'shift', 
+        'hold0', 'hold1', 'hold', 
+        'bc0', 'bc1', "bc",
+        # NEW: Add OVHS columns
+        'ov_shift0', 'ov_shift1', 'ov_shift',
+        'ov_hold0', 'ov_hold1', 'ov_hold'
+    ])
 
     all_session_data = ['all', all_shift0, all_shift1, all_shift0 + all_shift1, 
                         all_hold0, all_hold1, all_hold0 + all_hold1, 
@@ -166,7 +220,14 @@ def main(cfg: DictConfig) -> None:
     all_row = df[df['session'] == 'all']
 
     statistics = {}
-    categories = ['shift0', 'shift1', 'shift', 'hold0', 'hold1', 'hold',  'bc0', 'bc1', 'bc']
+    categories = [
+        'shift0', 'shift1', 'shift', 
+        'hold0', 'hold1', 'hold',  
+        'bc0', 'bc1', 'bc',
+        # NEW: Add OVHS categories
+        'ov_shift0', 'ov_shift1', 'ov_shift',
+        'ov_hold0', 'ov_hold1', 'ov_hold'
+    ]
     for category in categories:
         statistics[category] = calculate_statistics(all_row[category].iloc[0])
 

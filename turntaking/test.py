@@ -85,6 +85,7 @@ class Test:
                     "pred_ov": torch.tensor(thresholds_dict["pred_ov"]),
                     "pred_bc": torch.tensor(thresholds_dict["pred_bc"]),
                     "short_long": torch.tensor(thresholds_dict["short_long"]),
+                    "ovhs": torch.tensor(thresholds_dict.get("ovhs", 0.5)),  # NEW: Add OVHS with default
                 }
                 print("-" * 60)
                 print("### Thresholds ###")
@@ -96,6 +97,7 @@ class Test:
                 threshold_pred_ov=self.thresholds.get("pred_ov", 0.3),
                 threshold_short_long=self.thresholds.get("short_long", 0.5),
                 threshold_bc_pred=self.thresholds.get("pred_bc", 0.1),
+                threshold_ovhs=self.thresholds.get("ovhs", 0.5),  # NEW: Add OVHS threshold
             )
         else:
             self.model = self._find_threshold()
@@ -145,6 +147,7 @@ class Test:
         events_score = self.model.test_metric.compute()
         result = {
             "test_loss": test_loss.item(),
+            "ovhs": events_score["f1_ovhs"].item(),  # NEW: Add OVHS F1 score
             "shift_hold": events_score["f1_hold_shift"].item(),
             "short_long": events_score["f1_short_long"].item(),
             "short_long_0": events_score["f1_short_long_0"].item(),
@@ -336,16 +339,21 @@ def main(cfg: DictConfig) -> None:
     model_dir_path = os.path.join(repo_root(), 'output', model_dir_path)
 
 
+
     # Get user input for nickname (similar to train.py)
     nickname = input("Enter a nickname for this testing run: ").strip()
     if not nickname:
         nickname = "unnamed_test"
 
+    cfg_latest = cfg_dict
     with open(join(model_dir_path, "log.json")) as f:
         cfg_dict = json.load(f)
         cfg_dict["train"]["device"] = device
         if debug:
             set_debug_mode(cfg_dict)
+    #Always use the latest evaluation metrics
+    cfg_dict['events'] = cfg_latest['events']
+
 
     # Get user input for dataset choice
     dataset_choice = input("Choose dataset (noxi/switchboard/eald): ").strip().lower()

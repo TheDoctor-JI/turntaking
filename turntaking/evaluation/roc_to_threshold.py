@@ -103,6 +103,7 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
             shift_pred_pr_curve=True,
             ov_pred_pr_curve=False,
             long_short_pr_curve=True,
+            ovhs_pr_curve=False,  # NEW: Add OVHS PR curve
         )
     elif cfg_dict["model"]["vap"]["type"] == "discrete":
         model.test_metric = model.init_metric(
@@ -111,6 +112,7 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
             shift_pred_pr_curve=True,
             ov_pred_pr_curve=True,
             long_short_pr_curve=True,
+            ovhs_pr_curve=True,  # NEW: Enable OVHS PR curve for discrete
         )
     else:
         model.test_metric = model.init_metric(
@@ -119,6 +121,7 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
             shift_pred_pr_curve=True,
             ov_pred_pr_curve=False,
             long_short_pr_curve=True,
+            ovhs_pr_curve=False,  # NEW: Enable OVHS PR curve
         )
 
     # Find Thresholds
@@ -149,6 +152,7 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
     model.test_metric.update(
         p=turn_taking_probs["p"],
         bc_pred_probs=turn_taking_probs.get("bc_prediction", None),
+        p_ovhs=turn_taking_probs.get("p_ovhs", None),
         events=events,
     )
 
@@ -189,6 +193,14 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
         }
         metric_list.append("ov_preds")
 
+    # NEW: Add OVHS predictions collection
+    if hasattr(model.test_metric, "ovhs_pr"):
+        predictions["ovhs"] = {
+            "preds": torch.cat(model.test_metric.ovhs_pr.preds),
+            "target": torch.cat(model.test_metric.ovhs_pr.target),
+        }
+        metric_list.append("ovhs")
+
     ############################################
     # Curves
     curves = {}
@@ -204,6 +216,10 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
     shift_pred_threshold = torch.tensor(0.5)
     ov_pred_threshold = torch.tensor(0.5)
     long_short_threshold = torch.tensor(0.5)
+    # NEW: Add OVHS threshold finding
+    ovhs_threshold = torch.tensor(0.5)
+    if "ovhs" in curves:
+        ovhs_threshold = get_best_thresh(curves, "ovhs", "f1", min_thresh)
     if "shift_hold" in curves:
         shift_hold_threshold = get_best_thresh(curves, "shift_hold", "f1", min_thresh)
     if "bc_preds" in curves:
@@ -221,6 +237,7 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
         "pred_ov": ov_pred_threshold,
         "pred_bc": bc_pred_threshold,
         "short_long": long_short_threshold,
+        "ovhs": ovhs_threshold,  # NEW: Add OVHS threshold
     }
 
     model.test_metric = model.init_metric(
@@ -229,9 +246,11 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
         threshold_pred_ov=thresholds.get("pred_ov", 0.1),
         threshold_short_long=thresholds.get("short_long", 0.5),
         threshold_bc_pred=thresholds.get("pred_bc", 0.1),
+        threshold_ovhs=thresholds.get("ovhs", 0.5),  # NEW: Add OVHS threshold
     )
     model.test_metric.update(
         p=turn_taking_probs["p"],
+        p_ovhs=turn_taking_probs.get("p_ovhs", None),  # NEW: Include OVHS probabilities
         bc_pred_probs=turn_taking_probs.get("bc_prediction", None),
         events=events,
     )
@@ -240,6 +259,7 @@ def find_threshold(cfg_dict, model, dm, min_thresh=0.01):
 
     result = {
         "val_loss": val_loss.item(),
+        "ovhs": events_score["f1_ovhs"].item(),  # NEW: Add OVHS F1 score
         "shift_hold": events_score["f1_hold_shift"].item(),
         "short_long": events_score["f1_short_long"].item(),
         "shift_pred": events_score["f1_predict_shift"].item(),

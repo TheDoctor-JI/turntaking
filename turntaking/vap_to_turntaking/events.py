@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from turntaking.vap_to_turntaking.backchannel import Backchannel
 from turntaking.vap_to_turntaking.hold_shifts import HoldShift
+from turntaking.vap_to_turntaking.ov_hold_shift import OverlapHoldShift
 from turntaking.vap_to_turntaking.utils import (find_island_idx_len,
                                                 get_dialog_states,
                                                 get_last_speaker,
@@ -17,6 +18,7 @@ class TurnTakingEvents:
         hs_kwargs,
         bc_kwargs,
         metric_kwargs,
+        ovhs_kwargs=None,  # Add overlapping hold/shift kwargs
         frame_hz=100,
         seed=42,
     ):
@@ -26,6 +28,13 @@ class TurnTakingEvents:
         self.metric_kwargs = self.kwargs_to_frames(metric_kwargs, frame_hz)
         self.hs_kwargs = self.kwargs_to_frames(hs_kwargs, frame_hz)
         self.bc_kwargs = self.kwargs_to_frames(bc_kwargs, frame_hz)
+
+        self.ovhs_kwargs = None 
+        self.OVHS = None
+        if ovhs_kwargs is not None:
+            self.ovhs_kwargs = self.kwargs_to_frames(ovhs_kwargs, frame_hz)
+            self.OVHS = OverlapHoldShift(**self.ovhs_kwargs)
+        
 
         # values for metrics
         self.metric_min_context = self.metric_kwargs["min_context"]
@@ -50,6 +59,8 @@ class TurnTakingEvents:
         s = "TurnTakingEvents\n"
         s += str(self.HS) + "\n"
         s += str(self.BS)
+        if self.OVHS is not None:
+            s += "\n" + str(self.OVHS)
         return s
 
     def count_occurances(self, x):
@@ -172,6 +183,8 @@ class TurnTakingEvents:
         # TODO: having all events as a list/dict with (b, start, end, speaker) may be very much faster?
         # TODO:
 
+
+
         # HOLDS/SHIFTS:
         # shift, pre_shift, long_shift_onset,
         # hold, pre_hold, long_hold_onset,
@@ -247,11 +260,24 @@ class TurnTakingEvents:
                 non_shift_ov_on_activity, n_predict_shift_ov, dur=self.metric_pre_label_dur
             )
 
+
+
+
+        #######################################################
+        # Predict overlapping shift
+        #######################################################
+        # Add overlapping hold/shift detection
+        if self.OVHS is not None:
+            self.ov_tt = self.OVHS(
+                vad=vad, ds=ds, max_frame=max_frame, min_context=self.metric_min_context
+            )
+
+
         # pprint(self.bcs["pre_backchannel"][0])
         # pprint(n_pre_bc)
         # pprint(self.tt["shift"].shape)
         # return self.tt
-        return {
+        result = {
             "shift": self.tt["shift"][:, :max_frame],
             "hold": self.tt["hold"][:, :max_frame],
             "short": short[:, :max_frame],
@@ -264,6 +290,15 @@ class TurnTakingEvents:
             "predict_shift_ov_neg": predict_shift_ov_neg[:, :max_frame],
         }
 
+        # Add overlapping hold/shift events if available
+        if self.OVHS is not None:
+            result.update({
+                "ov_shift": self.ov_tt["ov_shift"][:, :max_frame],
+                "ov_hold": self.ov_tt["ov_hold"][:, :max_frame],
+            })
+        
+        return result
+
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
@@ -271,10 +306,24 @@ if __name__ == "__main__":
                                                                   example)
     from turntaking.vap_to_turntaking.plot_utils import plot_event, plot_vad_oh
 
+
+    ovhs_conf = {
+        "post_onset_shift": 1.0,
+        "pre_offset_shift": 1.0, 
+        "post_onset_hold": 1.0,
+        "pre_offset_hold": 1.0,
+        "min_overlap": 0.15,
+        "metric_pad": event_conf["metric"]["pad"],
+        "metric_dur": event_conf["metric"]["dur"],
+        "metric_pre_label_dur": event_conf["metric"]["pre_label_dur"],
+        "metric_onset_dur": event_conf["metric"]["onset_dur"],
+    }
+
     eventer = TurnTakingEvents(
         hs_kwargs=event_conf["hs"],
         bc_kwargs=event_conf["bc"],
         metric_kwargs=event_conf["metric"],
+        ovhs_kwargs=ovhs_conf,  # Add overlapping configuration
         frame_hz=100,
     )
     pprint(event_conf["hs"])
@@ -282,6 +331,15 @@ if __name__ == "__main__":
     va = example["va"]
     print(va)
     events = eventer(va, max_frame=None)
+
+
+    # Add overlapping events to output checking
+    if "ov_shift" in events:
+        print("ov_shift events detected:", events["ov_shift"].sum().item())
+        print("ov_hold events detected:", events["ov_hold"].sum().item())
+    
+
+
     print("long: ", (events["long"] != example["long"]).sum())
     print("short: ", (events["short"] != example["short"]).sum())
     print("shift: ", (events["shift"] != example["shift"]).sum())
@@ -307,5 +365,12 @@ if __name__ == "__main__":
     # _, ax = plot_event(example["short"][0], ax=ax)
     # _, ax = plot_event(example["long"][0], color=["r", "r"], ax=ax)
 
+
+    # Optional: Add overlapping events to visualization
+    if "ov_shift" in events:
+        _, ax = plot_event(events["ov_shift"][0], ax=ax, color=["purple", "purple"], alpha=0.5)
+        _, ax = plot_event(events["ov_hold"][0], ax=ax, color=["orange", "orange"], alpha=0.5)
+
+
     # plt.pause(0.1)
-    plt.savefig("/ahc/work2/kazuyo-oni/hoge.png")
+    plt.savefig("./hoge.png")

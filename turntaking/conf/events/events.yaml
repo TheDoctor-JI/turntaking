@@ -24,9 +24,22 @@ BC:
   metric_dur_frames: ${events.metric.onset_dur}
   metric_pre_label_dur: ${events.metric.pre_label_dur}
 
+OVHS:
+  post_onset_shift: 1
+  pre_offset_shift: 1
+  post_onset_hold: 1
+  pre_offset_hold: 1
+  min_overlap: 0.15
+  metric_pad: ${events.metric.pad}
+  metric_dur: ${events.metric.dur}
+  metric_pre_label_dur: ${events.metric.pre_label_dur}
+  metric_onset_dur: ${events.metric.onset_dur}
+
+
 threshold:
   SH: 0.5
   SL: 0.5
   S_pred: 0.3
   OV_pred: 0.1
   BC_pred: 0.1
+  OVHS: 0.5

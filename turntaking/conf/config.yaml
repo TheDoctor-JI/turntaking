@@ -22,12 +22,12 @@ train:
   optimizer: "AdamW"
   verbose: false
   checkpoint: 0.2
-  device: "cuda:1"
+  device: "cuda:0"
   learning_rate: 3.63e-4 #3.63e-4
 
 data:
-  # datasets: "noxi" #switchboard, noxi, eald
-  datasets: "switchboard" #switchboard, noxi, eald
+  datasets: "noxi" #switchboard, noxi, eald
+  # datasets: "switchboard" #switchboard, noxi, eald
   type: "sliding"
   sample_rate: 16000
   audio_mono: true

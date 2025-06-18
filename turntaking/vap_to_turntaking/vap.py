@@ -666,16 +666,27 @@ class VAP(nn.Module, Probabilites):
             p = self.probs_next_speaker(probs=probs, va=va, type=self.type)
             p_bc = self.probs_backchannel(probs)
             # p_ov = self.probs_overlap(probs)
+
+            # NEW: ovhs events probabilities
+            p_ovhs_events = self._probs_on_silence(probs)
+                
+
         else:
             probs = logits.sigmoid()
             p = self.probs_next_speaker(probs=probs, va=va, type=self.type)
             p_bc = None  # comparative
             # p_ov = None
+            p_ovhs_events = None
+            
             if self.type == "independent":
                 # Backchannel probs (dependent on embedding and VA)
                 p_bc = probs_ind_backchannel(probs)
 
-        return {"p": p, "bc_prediction": p_bc}
+        return {
+            "p": p, 
+            "bc_prediction": p_bc,
+            "p_ovhs": p_ovhs_events  # NEW output
+        }
 
 
 if __name__ == "__main__":
