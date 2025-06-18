@@ -31,6 +31,7 @@ OVHS:
   pre_offset_hold: 1
   min_overlap: 0.15
   metric_pad: ${events.metric.pad}
+  # For OVHS, metric_dur only serves as another lower bound on the overlap duration
   metric_dur: ${events.metric.dur}
   metric_pre_label_dur: ${events.metric.pre_label_dur}
   metric_onset_dur: ${events.metric.onset_dur}
