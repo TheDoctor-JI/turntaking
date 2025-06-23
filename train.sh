@@ -18,14 +18,13 @@ export MASTER_PORT=13768 # Or any available port
 
 # EXP_NAME="MVSA_ERIT_petrain_1e-3_50_epoch_31_layer1"
 DATE=$(date +%Y-%m-%d)
-python turntaking/voice_adapter/train_adapter.py \
-# --run_validation \
-# --save_model \
-# --max_eval_step 10 \
-# --adapter_path '/scratch/vemotionsys/rmfrieske/LLaMA_Models/LLaMA3_1_Adapter/MVSA_ERIT_finetune/2025-05-16/COCO_Flikr_pretrain_0.001llama_gate_full_batch64_8gpu218897/' \
-
-# python  pretrain.py \
-# --llama_path /scratch/vemotionsys/rmfrieske/LLaMA_Models/Meta-Llama-3.1-8B/ \
+# python turntaking/voice_adapter/train_adapter.py \
+torchrun turntaking/voice_adapter/train_adapter.py \
+    --adapter_type cnn \
+    --streaming \
+    --chunk_size 1600 \
+    --batch_size 8 \
+    --epochs 20
 # --lr=0.0001 \
 # --eval_data_path '/home/rmfrieske/datasets/csv/affectnet_val.csv'  \
 # --data_path  '/home/rmfrieske/datasets/csv/affectnet_train.csv'   '/home/rmfrieske/datasets/csv/emotion-detection-fer_train.csv' \

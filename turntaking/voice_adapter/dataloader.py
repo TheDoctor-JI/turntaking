@@ -5,7 +5,7 @@ from transformers import WhisperProcessor
 
 class CommonVoiceDataset(Dataset):
     def __init__(self, split="train", max_samples=None):
-        self.dataset = load_dataset("mozilla-foundation/common_voice_13_0", "en", split=split)
+        self.dataset = load_dataset("mozilla-foundation/common_voice_13_0", "en", split=split,trust_remote_code=True)
         self.processor = WhisperProcessor.from_pretrained("openai/whisper-large-v3")
         self.dataset = self.dataset.filter(lambda x: x["audio"] is not None and x["text"] is not None)
         if max_samples:

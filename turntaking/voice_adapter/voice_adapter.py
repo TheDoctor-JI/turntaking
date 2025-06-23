@@ -78,7 +78,7 @@ class LinearAdapter(BaseVoiceAdapter):
             nn.GELU(),
             nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, self.qianwen_dim)
-            
+        )
     def _process_chunk(self, x):
         return self.mlp(x)
 
