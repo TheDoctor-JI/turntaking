@@ -18,7 +18,7 @@ export MASTER_PORT=13768 # Or any available port
 
 # EXP_NAME="MVSA_ERIT_petrain_1e-3_50_epoch_31_layer1"
 DATE=$(date +%Y-%m-%d)
-python turntaking/train.py \
+python turntaking/voice_adapter/train_adapter.py \
 # --run_validation \
 # --save_model \
 # --max_eval_step 10 \
