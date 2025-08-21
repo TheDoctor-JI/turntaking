@@ -479,130 +479,130 @@ def main(cfg: DictConfig) -> None:
     '''
 
 
-    all_ov_count = {0: 0, 1: 0}
+    # all_ov_count = {0: 0, 1: 0}
 
-    for d, s in tqdm(zip(vad, sessions), desc="Processing"):
-        # print(f"{s}: {d.shape}")
-        e = eventer(d, max_frame=None)
-        # print(s)
-        # print("shift")
-        shift = find_continuous_ones(eventer.tt["shift_dur"])
-        # print("hold")
-        hold = find_continuous_ones(eventer.tt["hold_dur"])
-        ov = find_continuous_ones(eventer.tt["ov_dur"])
-        bc = find_continuous_ones(eventer.bcs["bc_dur"])
-
-
-        for key, values in ov.items():
-            neg_values = [-x for x in values]
-            shift.setdefault(key, []).extend(neg_values)
+    # for d, s in tqdm(zip(vad, sessions), desc="Processing"):
+    #     # print(f"{s}: {d.shape}")
+    #     e = eventer(d, max_frame=None)
+    #     # print(s)
+    #     # print("shift")
+    #     shift = find_continuous_ones(eventer.tt["shift_dur"])
+    #     # print("hold")
+    #     hold = find_continuous_ones(eventer.tt["hold_dur"])
+    #     ov = find_continuous_ones(eventer.tt["ov_dur"])
+    #     bc = find_continuous_ones(eventer.bcs["bc_dur"])
 
 
-        # NEW: Process OVHS events if available
-        ov_shift = {}
-        ov_hold = {}
-        if eventer.OVHS is not None and hasattr(eventer, 'ov_tt'):
-            ov_shift = find_continuous_ones(eventer.ov_tt["ov_shift_dur"])
-            ov_hold = find_continuous_ones(eventer.ov_tt["ov_hold_dur"])
+    #     for key, values in ov.items():
+    #         neg_values = [-x for x in values]
+    #         shift.setdefault(key, []).extend(neg_values)
+
+
+    #     # NEW: Process OVHS events if available
+    #     ov_shift = {}
+    #     ov_hold = {}
+    #     if eventer.OVHS is not None and hasattr(eventer, 'ov_tt'):
+    #         ov_shift = find_continuous_ones(eventer.ov_tt["ov_shift_dur"])
+    #         ov_hold = find_continuous_ones(eventer.ov_tt["ov_hold_dur"])
 
 
 
-        all_shift0 += shift[0]
-        all_shift1 += shift[1]
-        all_hold0 += hold[0]
-        all_hold1 += hold[1]
-        all_bc0 += bc[0]
-        all_bc1 += bc[1]
+    #     all_shift0 += shift[0]
+    #     all_shift1 += shift[1]
+    #     all_hold0 += hold[0]
+    #     all_hold1 += hold[1]
+    #     all_bc0 += bc[0]
+    #     all_bc1 += bc[1]
 
 
         
-        # NEW: Update OVHS tracking
-        all_ov_shift0 += ov_shift.get(0, [])
-        all_ov_shift1 += ov_shift.get(1, [])
-        all_ov_hold0 += ov_hold.get(0, [])
-        all_ov_hold1 += ov_hold.get(1, [])
+    #     # NEW: Update OVHS tracking
+    #     all_ov_shift0 += ov_shift.get(0, [])
+    #     all_ov_shift1 += ov_shift.get(1, [])
+    #     all_ov_hold0 += ov_hold.get(0, [])
+    #     all_ov_hold1 += ov_hold.get(1, [])
 
 
-        all_ov_count[0] += len(ov[0])
-        all_ov_count[1] += len(ov[1])
+    #     all_ov_count[0] += len(ov[0])
+    #     all_ov_count[1] += len(ov[1])
 
-        results.append(
-            [
-                s, 
-                shift[0], 
-                shift[1], 
-                shift[0] + shift[1], 
+    #     results.append(
+    #         [
+    #             s, 
+    #             shift[0], 
+    #             shift[1], 
+    #             shift[0] + shift[1], 
 
-                hold[0], 
-                hold[1], 
-                hold[0] + hold[1], 
+    #             hold[0], 
+    #             hold[1], 
+    #             hold[0] + hold[1], 
 
-                bc[0], 
-                bc[1], 
-                bc[0] + bc[1],
-                # NEW: Add OVHS results
-                ov_shift.get(0, []), ov_shift.get(1, []), 
-                ov_shift.get(0, []) + ov_shift.get(1, []),
-                ov_hold.get(0, []), ov_hold.get(1, []), 
-                ov_hold.get(0, []) + ov_hold.get(1, [])
-            ]
-        )
+    #             bc[0], 
+    #             bc[1], 
+    #             bc[0] + bc[1],
+    #             # NEW: Add OVHS results
+    #             ov_shift.get(0, []), ov_shift.get(1, []), 
+    #             ov_shift.get(0, []) + ov_shift.get(1, []),
+    #             ov_hold.get(0, []), ov_hold.get(1, []), 
+    #             ov_hold.get(0, []) + ov_hold.get(1, [])
+    #         ]
+    #     )
 
-    shift_ov_ratio_0 = all_ov_count[0] / len(all_shift0)
-    shift_ov_ratio_1 = all_ov_count[1] / len(all_shift1)
-    print(f"Shift to OV Ratio for 0: {shift_ov_ratio_0}")
-    print(f"Shift to OV Ratio for 1: {shift_ov_ratio_1}")
-    exit(1)
+    # shift_ov_ratio_0 = all_ov_count[0] / len(all_shift0)
+    # shift_ov_ratio_1 = all_ov_count[1] / len(all_shift1)
+    # print(f"Shift to OV Ratio for 0: {shift_ov_ratio_0}")
+    # print(f"Shift to OV Ratio for 1: {shift_ov_ratio_1}")
+    # exit(1)
 
-    df = pd.DataFrame(results, columns=[
-        'session', 
-        'shift0', 'shift1', 'shift', 
-        'hold0', 'hold1', 'hold', 
-        'bc0', 'bc1', "bc",
-        # NEW: Add OVHS columns
-        'ov_shift0', 'ov_shift1', 'ov_shift',
-        'ov_hold0', 'ov_hold1', 'ov_hold'
-    ])
+    # df = pd.DataFrame(results, columns=[
+    #     'session', 
+    #     'shift0', 'shift1', 'shift', 
+    #     'hold0', 'hold1', 'hold', 
+    #     'bc0', 'bc1', "bc",
+    #     # NEW: Add OVHS columns
+    #     'ov_shift0', 'ov_shift1', 'ov_shift',
+    #     'ov_hold0', 'ov_hold1', 'ov_hold'
+    # ])
 
-    all_session_data = ['all', all_shift0, all_shift1, all_shift0 + all_shift1, 
-                        all_hold0, all_hold1, all_hold0 + all_hold1, 
-                        all_bc0, all_bc1, all_bc0 + all_bc1]
-    df.loc[len(df)] = all_session_data
+    # all_session_data = ['all', all_shift0, all_shift1, all_shift0 + all_shift1, 
+    #                     all_hold0, all_hold1, all_hold0 + all_hold1, 
+    #                     all_bc0, all_bc1, all_bc0 + all_bc1]
+    # df.loc[len(df)] = all_session_data
 
-    all_row = df[df['session'] == 'all']
+    # all_row = df[df['session'] == 'all']
 
-    statistics = {}
-    categories = [
-        'shift0', 'shift1', 'shift', 
-        'hold0', 'hold1', 'hold',  
-        'bc0', 'bc1', 'bc',
-        # NEW: Add OVHS categories
-        'ov_shift0', 'ov_shift1', 'ov_shift',
-        'ov_hold0', 'ov_hold1', 'ov_hold'
-    ]
-    for category in categories:
-        statistics[category] = calculate_statistics(all_row[category].iloc[0])
+    # statistics = {}
+    # categories = [
+    #     'shift0', 'shift1', 'shift', 
+    #     'hold0', 'hold1', 'hold',  
+    #     'bc0', 'bc1', 'bc',
+    #     # NEW: Add OVHS categories
+    #     'ov_shift0', 'ov_shift1', 'ov_shift',
+    #     'ov_hold0', 'ov_hold1', 'ov_hold'
+    # ]
+    # for category in categories:
+    #     statistics[category] = calculate_statistics(all_row[category].iloc[0])
 
-    stats_df = pd.DataFrame(statistics).transpose()
-    print(stats_df)
+    # stats_df = pd.DataFrame(statistics).transpose()
+    # print(stats_df)
 
-    if HIST:
-        for index, row in df.iterrows():
-            session = row['session']
-            for column in df.columns[1:]:
-                if DATA is not None:
-                    plot_histogram(row[column], f'{session}{DATA}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}")
-                else:
-                    plot_histogram(row[column], f'{session}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}")
-    else:
-        for index, row in df.iterrows():
-            session = row['session']
-            if session == 'all':
-                for column in df.columns[1:]:
-                    if DATA is not None:
-                        plot_histogram(row[column], f'{session}{DATA}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}")
-                    else:
-                        plot_histogram(row[column], f'{session}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}") 
+    # if HIST:
+    #     for index, row in df.iterrows():
+    #         session = row['session']
+    #         for column in df.columns[1:]:
+    #             if DATA is not None:
+    #                 plot_histogram(row[column], f'{session}{DATA}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}")
+    #             else:
+    #                 plot_histogram(row[column], f'{session}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}")
+    # else:
+    #     for index, row in df.iterrows():
+    #         session = row['session']
+    #         if session == 'all':
+    #             for column in df.columns[1:]:
+    #                 if DATA is not None:
+    #                     plot_histogram(row[column], f'{session}{DATA}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}")
+    #                 else:
+    #                     plot_histogram(row[column], f'{session}', column, f"/ahc/work2/kazuyo-oni/turntaking/output/{cfg_dict['data']['datasets']}") 
 
 def plot_histogram(data, session, column, output_dir):
     if not data:
