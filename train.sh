@@ -3,11 +3,12 @@
 ##Eval for single gpu interactive session
 export LOCAL_RANK=0
 export RANK=0
-export WORLD_SIZE=1
+export WORLD_SIZE=2
 export MASTER_ADDR=localhost
-export MASTER_PORT=13714 # Or any available port
-export CUDA_LAUNCH_BLOCKING=1
-export TORCH_USE_CUDA_DSA=1
+export MASTER_PORT=13720 # Or any available port
+export CUDA_VISIBLE_DEVICES=0,1
+# export CUDA_LAUNCH_BLOCKING=1
+# export TORCH_USE_CUDA_DSA=1
 # export MASTER_ADDR=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 # export MASTER_PORT=$(( 60000 + (${SLURM_JOBID} % 1000) ))
 # export NCCL_DEBUG=INFO
@@ -22,21 +23,24 @@ export TORCH_USE_CUDA_DSA=1
 DATE=$(date +%Y-%m-%d)
 
 torchrun  --master_port=$MASTER_PORT  --nproc_per_node=$WORLD_SIZE --nnodes=1 --node_rank=0 turntaking/voice_adapter/train_adapter.py \
-    --adapter_type cnn \
+    --adapter_type linear_seq \
     --streaming \
     --chunk_size 1600 \
-    --batch_size 16 \
+    --batch_size 8 \
     --epochs 20 \
-    --num_workers 0 \
+    --num_workers 4 \
     --max_samples 1000 \
     --enable_ddp \
+    --lr 0.001 \
+    --target_seq_len 63
+
 # 
 # python turntaking/voice_adapter/train_adapter.py \
 #     --adapter_type cnn \
 #     --streaming \
 #     --chunk_size 1600 \
 #     --batch_size 16 \
-#     --epochs 20 \
+#     --epochs 5 \
 #     --num_workers 0 \
 #     --max_samples 1000 \
 
