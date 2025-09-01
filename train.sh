@@ -26,12 +26,12 @@ torchrun  --master_port=$MASTER_PORT  --nproc_per_node=$WORLD_SIZE --nnodes=1 --
     --adapter_type linear_seq \
     --streaming \
     --chunk_size 1600 \
-    --batch_size 8 \
-    --epochs 20 \
-    --num_workers 4 \
+    --batch_size 128 \
+    --epochs 1 \
+    --num_workers 8 \
     --max_samples 1000 \
     --enable_ddp \
-    --lr 0.001 \
+    --lr 0.01 \
     --target_seq_len 63
 
 # 
@@ -44,3 +44,8 @@ torchrun  --master_port=$MASTER_PORT  --nproc_per_node=$WORLD_SIZE --nnodes=1 --
 #     --num_workers 0 \
 #     --max_samples 1000 \
 
+    # 'cnn': CNNAdapter,
+    #         'linear': LinearAdapter,
+    #         'linear_attn': LinearAttentionAdapter,
+    #         'linear_seq': LinearSequenceAdapter,           # New
+    #         'linear_attn_seq': LinearAt

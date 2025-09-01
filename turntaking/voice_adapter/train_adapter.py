@@ -4,6 +4,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data.distributed import DistributedSampler
 import os
+import torch.nn.functional as F
 import argparse
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -21,8 +22,45 @@ from datasets import load_dataset
 from sklearn.model_selection import train_test_split
 import atexit
 import warnings
+from transformers import get_linear_schedule_with_warmup
 
+# -------------------- DDP helpers --------------------
+def is_dist_avail_and_initialized():
+    return dist.is_available() and dist.is_initialized()
 
+def get_rank():
+    return dist.get_rank() if is_dist_avail_and_initialized() else 0
+
+def get_world_size():
+    return dist.get_world_size() if is_dist_avail_and_initialized() else 1
+
+def is_main_process():
+    return get_rank() == 0
+
+def ddp_all_reduce_mean(value: torch.Tensor) -> torch.Tensor:
+    """All-reduce mean over all processes for a scalar tensor."""
+    if not is_dist_avail_and_initialized():
+        return value
+    value = value.clone()
+    dist.all_reduce(value, op=dist.ReduceOp.SUM)
+    value /= get_world_size()
+    return value
+
+def ddp_gather_strings(local_list):
+    """
+    Gather a Python list of strings/objects from all ranks to rank-0.
+    Returns gathered list on rank-0; empty list on others.
+    """
+    if not is_dist_avail_and_initialized():
+        return local_list
+    gathered = [None for _ in range(get_world_size())]
+    dist.gather_object(local_list, gathered if is_main_process() else None, dst=0)
+    if is_main_process():
+        merged = []
+        for part in gathered:
+            merged.extend(part)
+        return merged
+    return []
 
 def setup(rank, world_size):
     """Initialize the distributed environment."""
@@ -126,7 +164,7 @@ def train_adapter(args):
             backend='nccl',
             init_method='env://'
         )
-        model = DDP(model, device_ids=[local_rank])
+        model = DDP(model, device_ids=[local_rank], find_unused_parameters=False)
         print(f"DDP enabled for rank {local_rank}")
     else:
         print("Single GPU training mode")
@@ -141,8 +179,12 @@ def train_adapter(args):
             train_dataset,
             num_replicas=world_size,
             rank=local_rank,
-            shuffle=True
-        )
+            shuffle=True,
+            drop_last=False)
+        val_sampler   = DistributedSampler(val_dataset,   num_replicas=world_size, rank=local_rank, shuffle=False, drop_last=False)
+    else:
+        train_sampler = None
+        val_sampler   = None
 
     # Create data loaders
     train_loader = DataLoader(
@@ -164,11 +206,21 @@ def train_adapter(args):
     )
 
     # Loss and optimizer
-    criterion = nn.CrossEntropyLoss(ignore_index=-100)  # Ignore padding tokens
+    # print(tokenizer.pad_token_id)
+    ce_loss_fct = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id, label_smoothing=0.1)  # Ignore padding tokens
     optimizer = torch.optim.AdamW(
         model.module.adapter_module.parameters() if args.enable_ddp else model.adapter_module.parameters(),
         lr=args.lr,
         weight_decay=args.weight_decay
+    )
+    # After optimizer definition
+    num_training_steps = args.epochs * len(train_loader)
+    num_warmup_steps = int(0.1 * num_training_steps)  # 10% warmup
+
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=num_training_steps
     )
 
     # Training loop
@@ -183,18 +235,22 @@ def train_adapter(args):
         hypotheses = []
 
         for batch_idx, batch in enumerate(train_loader):
-        
+
             input_features, labels, attention_mask = batch
             input_features = input_features.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
             attention_mask = attention_mask.to(device, non_blocking=True)
- 
+            
+            
+
             # print("labels min:", labels.min().item(), "max:", labels.max().item())
             # print("labels shape:", labels.shape)
- 
+            # print("Pad token count:", (labels == tokenizer.pad_token_id).sum().item())
             # print("tokenizer vocab size", tokenizer.vocab_size)
             # print(len(tokenizer))
+            # Adapter projects to Qianwen dimension
 
+            optimizer.zero_grad()
             # Reset cache if streaming
             if args.streaming and hasattr(model.module.adapter_module if args.enable_ddp else model.adapter_module, 'reset_cache'):
                 (model.module if args.enable_ddp else model).adapter_module.reset_cache()
@@ -204,44 +260,97 @@ def train_adapter(args):
             #         print(name, param.shape)
             # Forward pass
             if args.enable_ddp:
+                with torch.no_grad():
+                    encoder_hidden_states = model.module.whisper(input_features).last_hidden_state
                 logits = model.module(input_features, attention_mask=attention_mask)
+                proj = model.module.adapter_module(encoder_hidden_states)  # (B, T, qianwen_dim)
+                qianwen_embeds = model.module.qianwen.get_input_embeddings().weight  # (vocab_size, qianwen_dim)
+                audio_token_id = tokenizer.convert_tokens_to_ids("</audio>")
+                audio_token_embed = model.module.qianwen.get_input_embeddings()(
+                torch.tensor([audio_token_id], device=proj.device)
+                ).unsqueeze(0).expand(proj.size(0), -1, -1)  # [B, 1, qianwen_dim]
             else:
+                with torch.no_grad():
+                    encoder_hidden_states = model.whisper(input_features).last_hidden_state
                 logits = model(input_features,attention_mask=attention_mask)
-          
-  
+                proj = model.adapter_module(encoder_hidden_states)  # (B, T, qianwen_dim)
+                qianwen_embeds = model.qianwen.get_input_embeddings().weight  # (vocab_size, qianwen_dim)
+                audio_token_id = tokenizer.convert_tokens_to_ids("</audio>")
+                audio_token_embed = model.qianwen.get_input_embeddings()(
+                torch.tensor([audio_token_id], device=proj.device)
+                ).unsqueeze(0).expand(proj.size(0), -1, -1)  # [B, 1, qianwen_dim]
+
+            # print("Logits shape:", logits.shape)
+            # print("Labels shape:", labels.shape)
+            # print("Pad token ID:", tokenizer.pad_token_id)
+            # print("Pad count:", (labels == tokenizer.pad_token_id).sum().item())
+            invalid_labels = ((labels != tokenizer.pad_token_id) & ((labels < 0) | (labels >= logits.size(-1))))
+            if invalid_labels.any():
+                print("Invalid label values:", labels[invalid_labels])
+                raise ValueError("Labels contain out-of-range values")
             # print(f"Logits shape: {logits.shape}, Labels shape: {labels.shape}")
             # seq_len = labels.shape[1]
             assert labels.dtype == torch.long, f"Labels must be LongTensor, got {labels.dtype}"
-            assert (labels < tokenizer.vocab_size).all() or (labels == -100).any(), "Some labels are out of range"
+            assert (labels < len(tokenizer)).all() or (labels > 0).any(), "Some labels are out of range"
             # print("Logits vocab size:", logits.size(-1))
             # logits = logits[:, :seq_len, :]  # Truncate logits to match label length
             # Calculate loss
-            loss = criterion(logits.reshape(-1, logits.size(-1)), labels.reshape(-1))
+            ce_loss = ce_loss_fct(logits.reshape(-1, logits.size(-1)), labels.reshape(-1))
             # print(loss.item())
 
+            gold_embeds = qianwen_embeds[labels]  # (B, T, qianwen_dim)
+            # adding audio token for projection and masking
+
+            # Concatenate <audio> token at the front
+            proj = torch.cat([audio_token_embed, proj], dim=1)  # [B, 64, qianwen_dim]
+
+            # Mask out pad positions
+            mask = (labels != tokenizer.pad_token_id).unsqueeze(-1)  # (B, T, 1)
+            proj_masked = proj * mask
+            gold_masked = gold_embeds * mask
+
+            align_loss = F.mse_loss(proj_masked, gold_masked, reduction="sum") / mask.sum().clamp(min=1)
+            align_loss_value = align_loss.item()
+            # Total loss
+            alpha_high = 0.9
+            alpha_low = 0.1
+            align_threshold = 0.01  # target MSE
+            alpha = alpha_high * min(1.0, align_loss_value / align_threshold)
+            alpha = max(alpha, alpha_low)
+            loss = (1 - alpha) * ce_loss + alpha * align_loss
             # Backward pass
-            optimizer.zero_grad() 
+            # optimizer.zero_grad() 
             loss.backward()
             optimizer.step()
-            # optimizer.zero_grad()
+            scheduler.step()
+
 
             epoch_loss += loss.item()
 
             # Decode predictions
             pred_ids = logits.argmax(-1)
             for pred, label in zip(pred_ids, labels):
-                pred = [t for t in pred if t >= 0 and t != -100 and t < len(tokenizer)]
+                pred = [t for t in pred if t >= 0 and t != tokenizer.pad_token_id and t < len(tokenizer)]
                 pred_str = tokenizer.decode(pred, skip_special_tokens=True)
-                label = [t for t in label if t >= 0 and t != -100 and t < len(tokenizer)]
+                label = [t for t in label if t >= 0 and t != tokenizer.pad_token_id and t < len(tokenizer)]
                 label_str = tokenizer.decode(label, skip_special_tokens=True)
                 hypotheses.append(pred_str)
                 references.append(label_str)
 
             if batch_idx % args.log_interval == 0 and local_rank == 0:
                 print(f"Epoch {epoch+1} Batch {batch_idx} Loss: {loss.item():.4f}")
+            if local_rank == 0:
+
+                wandb.log({
+                    "loss": loss.item(),
+                    "align_loss":align_loss.item(),
+                    "ce_loss": ce_loss.item(),
+                    "alpha": alpha,
+                    
+                })
 
         # Synchronize and log metrics
-        avg_loss = epoch_loss / len(train_loader)
+        avg_loss = (epoch_loss / len(train_loader))/world_size if args.enable_ddp else (epoch_loss / len(train_loader))
         current_wer = wer(references, hypotheses)
 
         if local_rank == 0:
@@ -249,7 +358,7 @@ def train_adapter(args):
             print(f"Train Loss: {avg_loss:.4f} | WER: {current_wer:.4f}")
             wandb.log({
                 "epoch": epoch+1,
-                "train_loss": avg_loss,
+                "average_train_loss": avg_loss,
                 "train_wer": current_wer
             })
 
@@ -259,7 +368,7 @@ def train_adapter(args):
                 val_loader, 
                 processor, 
                 tokenizer, 
-                criterion, 
+                ce_loss_fct, 
                 device,
                 args.streaming,
                 args.enable_ddp
@@ -354,6 +463,7 @@ def validate(model, val_loader, processor, tokenizer, criterion, device, streami
                 logits = model.module(input_features, attention_mask=attention_mask)
             else:
                 logits = model(input_features,attention_mask=attention_mask)
+     
             # print(f"Logits shape: {logits.shape}, Labels shape: {labels.shape}")
             # seq_len = labels.shape[1]
             # logits = logits[:, :seq_len, :]  # Truncate logits to match label length

@@ -10,6 +10,7 @@ class BaseVoiceAdapter(nn.Module):
                  qianwen_dim=4096,
                  streaming_mode=True,
                  target_seq_len=None,
+                 
                  chunk_size=1600):
         super().__init__()
         self.whisper_dim = whisper_dim
@@ -159,15 +160,15 @@ class LinearAttentionAdapter(BaseVoiceAdapter):
 
         self.proj = nn.Linear(self.whisper_dim, self.qianwen_dim)
 class LinearSequenceAdapter(BaseVoiceAdapter):
-    def __init__(self, target_seq_len=None, hidden_dim=2048, **kwargs):
+    def __init__(self, target_seq_len=None, hidden_dim=512, max_speech_tokens=128, **kwargs):
         super().__init__(**kwargs)
         self.target_seq_len = target_seq_len
         self.hidden_dim = hidden_dim
+        self.max_speech_tokens = max_speech_tokens
         
         # Linear projection layers
-        self.input_proj = nn.Linear(self.whisper_dim, hidden_dim)
         self.seq_adapter = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(self.whisper_dim, hidden_dim),
             nn.GELU(),
             nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, self.qianwen_dim)
@@ -178,6 +179,11 @@ class LinearSequenceAdapter(BaseVoiceAdapter):
             self.pos_embeds = nn.Parameter(
                 torch.randn(target_seq_len, hidden_dim) * 0.02
             )
+        
+        # Trainable pseudo-token embeddings for speech
+        self.speech_token_embeddings = nn.Parameter(
+            torch.randn(max_speech_tokens, self.qianwen_dim) * 0.02
+        )
         
         # Cache for streaming mode
         self.cache = None
@@ -215,9 +221,6 @@ class LinearSequenceAdapter(BaseVoiceAdapter):
         Returns:
             (B, target_T, qianwen_dim)
         """
-        # Project to hidden dimension
-        x = self.input_proj(x)  # (B, T, hidden_dim)
-        
         # Determine target sequence length
         if target_seq_len is None:
             target_seq_len = self.target_seq_len or x.size(1)
@@ -226,11 +229,14 @@ class LinearSequenceAdapter(BaseVoiceAdapter):
         x = self._adapt_sequence_length(x, target_seq_len)
         
         # Add positional embeddings if available
+        x = self.seq_adapter[0](x)  # nn.Linear(self.whisper_dim, hidden_dim)
         if hasattr(self, 'pos_embeds') and x.size(1) == self.pos_embeds.size(0):
             x = x + self.pos_embeds.unsqueeze(0)
+        # Continue with the rest of seq_adapter
+        x = self.seq_adapter[1:](x)
         
         # Apply sequence adapter
-        return self.seq_adapter(x)
+        return x # (B, T, qianwen_dim)
     
     def forward(self, x, reset_cache=False, target_seq_len=None, labels=None):
         """
@@ -243,10 +249,7 @@ class LinearSequenceAdapter(BaseVoiceAdapter):
         """
         B, T, _ = x.shape
         device = x.device
-        # print(f"Input shape: {x.shape}")
-        # print(f"Labels shape: {labels.shape if labels is not None else None}")
-        # print(f"Target seq len: {target_seq_len}")
-        # print(f"Self target seq len: {self.target_seq_len}")
+        
         if reset_cache:
             self.reset_cache(batch_size=B, device=device)
         
@@ -261,32 +264,38 @@ class LinearSequenceAdapter(BaseVoiceAdapter):
             target_seq_len = T
         
         if not self.streaming_mode:
-            return self._process_chunk(x, target_seq_len)
-
-        # Streaming mode: process in chunks
-        outputs = []
-        for i in range(0, T, self.chunk_size):
-            chunk = x[:, i:i+self.chunk_size]
-            # For streaming, adapt each chunk to proportional length
-            chunk_target_len = None
-            if target_seq_len:
-                chunk_target_len = min(target_seq_len, 
-                                     int(target_seq_len * chunk.size(1) / T))
+            proj = self._process_chunk(x, target_seq_len)  # (B, T, qianwen_dim)
+        else:
+            # Streaming mode: process in chunks
+            outputs = []
+            for i in range(0, T, self.chunk_size):
+                chunk = x[:, i:i+self.chunk_size]
+                chunk_target_len = None
+                if target_seq_len:
+                    chunk_target_len = min(target_seq_len, 
+                                         int(target_seq_len * chunk.size(1) / T))
+                processed = self._process_chunk(chunk, chunk_target_len)
+                outputs.append(processed)
             
-            processed = self._process_chunk(chunk, chunk_target_len)
-            outputs.append(processed)
-        
-        result = torch.cat(outputs, dim=1)
-        
-        # Final sequence length adaptation if needed
-        if target_seq_len and result.size(1) != target_seq_len:
-            result = self._adapt_sequence_length(result, target_seq_len)
-        
-        return result
+            proj = torch.cat(outputs, dim=1)
+            
+            # Final sequence length adaptation if needed
+            if target_seq_len and proj.size(1) != target_seq_len:
+                proj = self._adapt_sequence_length(proj, target_seq_len)
+
+        # ---- NEW STEP: Map into speech-token embedding subspace ----
+        # logits: (B, T, qianwen_dim)
+        # speech_token_embeddings: (num_tokens, qianwen_dim)
+        weights = torch.matmul(proj, self.speech_token_embeddings.T)  # (B, T, num_tokens)
+        weights = F.softmax(weights, dim=-1)
+        proj = torch.matmul(weights, self.speech_token_embeddings)  # (B, T, qianwen_dim)
+
+        return proj
+
 
 
 class LinearAttentionSequenceAdapter(BaseVoiceAdapter):
-    def __init__(self, target_seq_len=512, hidden_dim=1024, attn_heads=8, **kwargs):
+    def __init__(self, target_seq_len=512, hidden_dim=512, attn_heads=8,labels=None, max_speech_tokens=128, **kwargs):
         super().__init__(**kwargs)
         self.target_seq_len = target_seq_len
         self.hidden_dim = hidden_dim
@@ -299,7 +308,10 @@ class LinearAttentionSequenceAdapter(BaseVoiceAdapter):
         self.query_tokens = nn.Parameter(
             torch.randn(target_seq_len, hidden_dim) * 0.02
         )
-        
+        # Trainable pseudo-token embeddings for speech
+        self.speech_token_embeddings = nn.Parameter(
+            torch.randn(max_speech_tokens, self.qianwen_dim) * 0.02
+        )
         # Cross-attention layer
         self.cross_attention = nn.MultiheadAttention(
             embed_dim=hidden_dim,
@@ -318,6 +330,7 @@ class LinearAttentionSequenceAdapter(BaseVoiceAdapter):
         # Layer normalization
         self.norm1 = nn.LayerNorm(hidden_dim)
         self.norm2 = nn.LayerNorm(hidden_dim)
+
         
         # Output projection
         self.output_proj = nn.Linear(hidden_dim, self.qianwen_dim)
@@ -395,6 +408,7 @@ class LinearAttentionSequenceAdapter(BaseVoiceAdapter):
             target_seq_len = self.target_seq_len
         
         if not self.streaming_mode:
+            print(x.shape, target_seq_len)
             return self._process_chunk(x, target_seq_len)
 
         # Streaming mode: process in chunks
@@ -413,26 +427,32 @@ class LinearAttentionSequenceAdapter(BaseVoiceAdapter):
             # Use interpolation for final adjustment
             result = result.transpose(1, 2)  # (B, qianwen_dim, seq)
             result = F.interpolate(result, size=target_seq_len, mode='linear', align_corners=False)
-            result = result.transpose(1, 2)  # (B, target_seq_len, qianwen_dim)
-        
-        return result
-    def _process_chunk(self, x):
-        x = self.mlp(x)  # (B, T, D)
+            proj = result.transpose(1, 2)  # (B, target_seq_len, qianwen_dim)
+        # ---- NEW STEP: Map into speech-token embedding subspace ----
 
-        if self.streaming_mode:
-            attn_mask = self._create_sliding_mask(x.size(1), x.device)
-            x, _ = self.attn(x, x, x, attn_mask=attn_mask)
-        else:
-            x, _ = self.attn(x, x, x)
+        # logits: (B, T, qianwen_dim)
+        # speech_token_embeddings: (num_tokens, qianwen_dim)
+        weights = torch.matmul(proj, self.speech_token_embeddings.T)  # (B, T, num_tokens)
+        weights = F.softmax(weights, dim=-1)
+        proj = torch.matmul(weights, self.speech_token_embeddings)  # (B, T, qianwen_dim)
+        return proj
+    # def _process_chunk(self, x):
+    #     x = self.mlp(x)  # (B, T, D)
 
-        return self.proj(x)
+    #     if self.streaming_mode:
+    #         attn_mask = self._create_sliding_mask(x.size(1), x.device)
+    #         x, _ = self.attn(x, x, x, attn_mask=attn_mask)
+    #     else:
+    #         x, _ = self.attn(x, x, x)
 
-    def _create_sliding_mask(self, seq_len, device):
-        # Lower-triangular with limited window
-        mask = torch.ones(seq_len, seq_len, device=device)
-        for i in range(seq_len):
-            mask[i, max(0, i - self.attn_window):i + 1] = 0
-        return mask.bool()
+    #     return self.proj(x)
+
+    # def _create_sliding_mask(self, seq_len, device):
+    #     # Lower-triangular with limited window
+    #     mask = torch.ones(seq_len, seq_len, device=device)
+    #     for i in range(seq_len):
+    #         mask[i, max(0, i - self.attn_window):i + 1] = 0
+    #     return mask.bool()
 
 
 def run_adapter_forward(encoder_output, adapter: BaseVoiceAdapter, streaming=False):

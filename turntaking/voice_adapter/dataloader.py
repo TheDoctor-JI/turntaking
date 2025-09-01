@@ -117,7 +117,7 @@ def collate_fn(batch, tokenizer=None, target_len=64):
     """
     Collate function:
     - Stacks audio features
-    - Tokenizes and pads labels to `target_len` with -100 (for loss ignoring)
+    - Tokenizes and pads labels to `target_len` with tokenizer.pad_token_id (for loss ignoring)
     - Returns Whisper attention mask (all ones, no padding in inputs)
     """
 
@@ -135,7 +135,7 @@ def collate_fn(batch, tokenizer=None, target_len=64):
 
     vocab_size = len(tokenizer)
 
-    padded_input_ids = torch.full((batch_size, target_len), fill_value=-100, dtype=torch.long)
+    padded_input_ids = torch.full((batch_size, target_len), fill_value=tokenizer.pad_token_id, dtype=torch.long)
     for i, ids in enumerate(tokenized):
         # Clip token ids to valid range (optional safety)
         valid_ids = [min(max(t, 0), vocab_size - 1) for t in ids]

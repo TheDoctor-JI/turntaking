@@ -123,6 +123,7 @@ def create_adapter_model(
     tokenizer = AutoTokenizer.from_pretrained(qianwen_model_name,
         trust_remote_code=True,
     )
+    print(f"Tokenizer pad token ID: {tokenizer.pad_token_id}")
     special_tokens_dict = {"additional_special_tokens": ["</audio>"]}
     num_added = tokenizer.add_special_tokens(special_tokens_dict)
 
@@ -144,8 +145,7 @@ def create_adapter_model(
     whisper=whisper.encoder
     # Freeze all parameters
 # Freeze all parameters
-    for param in whisper.parameters():
-        param.requires_grad = False
+
     # # Unfreeze only the last hidden layer of the decoder
     # num_decoder_layers = len(whisper.decoder.layers)
     # num_layers_to_unfreeze = 12
@@ -182,6 +182,7 @@ def create_adapter_model(
             target_seq_len=target_seq_len,  # Pass target length
             **adapter_kwargs
         )
+        
     else:
         # For pretrained adapters, verify dimensions match
         whisper = PeftModel.from_pretrained(whisper, adapter_path)
