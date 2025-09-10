@@ -1,6 +1,8 @@
 from flask import Flask, render_template, jsonify, request, send_file
 import os
 import json
+import pandas as pd
+import numpy as np
 from pathlib import Path
 
 app = Flask(__name__)
@@ -62,6 +64,54 @@ def session_info(session):
     }
     
     return jsonify(info)
+
+@app.route('/api/session/<session>/gaze_data')
+def get_gaze_data(session):
+    """Get gaze data for both expert and novice"""
+    session_path = os.path.join(DATASET_PATH, session)
+    if not os.path.exists(session_path):
+        return "Session not found", 404
+    
+    expert_csv = os.path.join(session_path, "non_varbal_expert.csv")
+    novice_csv = os.path.join(session_path, "non_varbal_novice.csv")
+    
+    data = {}
+    
+    # Load expert data
+    if os.path.exists(expert_csv):
+        try:
+            df_expert = pd.read_csv(expert_csv)
+            # Extract gaze data (gaze_x, gaze_y, gaze_confidence)
+            expert_gaze = {
+                'gaze_x': df_expert['gaze_x'].tolist(),
+                'gaze_y': df_expert['gaze_y'].tolist(),
+                'gaze_confidence': df_expert['gaze_confidence'].tolist(),
+                'frame_count': len(df_expert),
+                'fps': 25  # 25Hz as mentioned
+            }
+            data['expert'] = expert_gaze
+        except Exception as e:
+            print(f"Error loading expert data: {e}")
+            data['expert'] = None
+    
+    # Load novice data
+    if os.path.exists(novice_csv):
+        try:
+            df_novice = pd.read_csv(novice_csv)
+            # Extract gaze data (gaze_x, gaze_y, gaze_confidence)
+            novice_gaze = {
+                'gaze_x': df_novice['gaze_x'].tolist(),
+                'gaze_y': df_novice['gaze_y'].tolist(),
+                'gaze_confidence': df_novice['gaze_confidence'].tolist(),
+                'frame_count': len(df_novice),
+                'fps': 25  # 25Hz as mentioned
+            }
+            data['novice'] = novice_gaze
+        except Exception as e:
+            print(f"Error loading novice data: {e}")
+            data['novice'] = None
+    
+    return jsonify(data)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

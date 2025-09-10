@@ -140,6 +140,135 @@
             margin: 5px 0;
             color: #666;
         }
+        
+        .gaze-visualization {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+        }
+        
+        .gaze-controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .gaze-controls label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .gaze-controls input[type="range"] {
+            width: 200px;
+            margin: 0 10px;
+        }
+        
+        .gaze-controls input[type="number"] {
+            width: 80px;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        
+        .gaze-panel {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .gaze-section {
+            flex: 1;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        
+        .gaze-section h4 {
+            margin: 0 0 15px 0;
+            text-align: center;
+            color: #333;
+        }
+        
+        .gaze-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .gaze-coordinates {
+            font-family: monospace;
+            font-size: 16px;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            min-width: 200px;
+            text-align: center;
+        }
+        
+        .gaze-status {
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-weight: bold;
+            text-align: center;
+            min-width: 150px;
+        }
+        
+        .looking-at-other {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .looking-away {
+            background-color: #f44336;
+            color: white;
+        }
+        
+        .gaze-confidence {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .gaze-plot {
+            width: 300px;
+            height: 200px;
+            border: 1px solid #ddd;
+            background-color: white;
+            position: relative;
+            margin: 10px auto;
+        }
+        
+        .gaze-point {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: #2196F3;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.1s ease;
+        }
+        
+        .gaze-center {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #FF5722;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .gaze-threshold {
+            position: absolute;
+            border: 2px dashed #FFC107;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -184,6 +313,47 @@
                 <button id="pauseBtn" class="pause-btn">Pause Both</button>
                 <button id="syncBtn" class="sync-btn">Sync Videos</button>
             </div>
+            
+            <div id="gazeVisualization" class="gaze-visualization">
+                <h3>Gaze Direction Visualization</h3>
+                
+                <div class="gaze-controls">
+                    <label for="gazeThreshold">Looking Threshold:</label>
+                    <input type="range" id="gazeThreshold" min="0.05" max="0.5" step="0.01" value="0.15">
+                    <input type="number" id="gazeThresholdValue" min="0.05" max="0.5" step="0.01" value="0.15">
+                    <span style="margin-left: 10px; color: #666;">Distance from center (0,0) to consider "looking at other party"</span>
+                </div>
+                
+                <div class="gaze-panel">
+                    <div class="gaze-section">
+                        <h4>Expert Gaze</h4>
+                        <div class="gaze-display">
+                            <div class="gaze-plot" id="expertGazePlot">
+                                <div class="gaze-center"></div>
+                                <div class="gaze-threshold" id="expertThresholdCircle"></div>
+                                <div class="gaze-point" id="expertGazePoint"></div>
+                            </div>
+                            <div class="gaze-coordinates" id="expertCoordinates">X: 0.000, Y: 0.000</div>
+                            <div class="gaze-status" id="expertStatus">Unknown</div>
+                            <div class="gaze-confidence" id="expertConfidence">Confidence: --</div>
+                        </div>
+                    </div>
+                    
+                    <div class="gaze-section">
+                        <h4>Novice Gaze</h4>
+                        <div class="gaze-display">
+                            <div class="gaze-plot" id="noviceGazePlot">
+                                <div class="gaze-center"></div>
+                                <div class="gaze-threshold" id="noviceThresholdCircle"></div>
+                                <div class="gaze-point" id="noviceGazePoint"></div>
+                            </div>
+                            <div class="gaze-coordinates" id="noviceCoordinates">X: 0.000, Y: 0.000</div>
+                            <div class="gaze-status" id="noviceStatus">Unknown</div>
+                            <div class="gaze-confidence" id="noviceConfidence">Confidence: --</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <div id="loading" class="loading" style="display: none;">
@@ -203,6 +373,24 @@
         const sessionInfo = document.getElementById('sessionInfo');
         const sessionName = document.getElementById('sessionName');
         const featuresInfo = document.getElementById('featuresInfo');
+        
+        // Gaze visualization elements
+        const gazeThreshold = document.getElementById('gazeThreshold');
+        const gazeThresholdValue = document.getElementById('gazeThresholdValue');
+        const expertGazePoint = document.getElementById('expertGazePoint');
+        const noviceGazePoint = document.getElementById('noviceGazePoint');
+        const expertCoordinates = document.getElementById('expertCoordinates');
+        const noviceCoordinates = document.getElementById('noviceCoordinates');
+        const expertStatus = document.getElementById('expertStatus');
+        const noviceStatus = document.getElementById('noviceStatus');
+        const expertConfidence = document.getElementById('expertConfidence');
+        const noviceConfidence = document.getElementById('noviceConfidence');
+        const expertThresholdCircle = document.getElementById('expertThresholdCircle');
+        const noviceThresholdCircle = document.getElementById('noviceThresholdCircle');
+        
+        // Gaze data storage
+        let gazeData = null;
+        let gazeUpdateInterval = null;
 
         // Session selector change handler
         sessionSelect.addEventListener('change', function() {
@@ -211,7 +399,19 @@
                 loadSession(selectedSession);
             } else {
                 videoContainer.style.display = 'none';
+                stopGazeUpdate();
             }
+        });
+
+        // Threshold control handlers
+        gazeThreshold.addEventListener('input', function() {
+            gazeThresholdValue.value = this.value;
+            updateThresholdCircles();
+        });
+
+        gazeThresholdValue.addEventListener('input', function() {
+            gazeThreshold.value = this.value;
+            updateThresholdCircles();
         });
 
         // Load session data and videos
@@ -232,6 +432,9 @@
                 expertVideo.src = sessionData.expert_video;
                 noviceVideo.src = sessionData.novice_video;
 
+                // Load gaze data
+                await loadGazeData(session);
+
                 // Show video container
                 videoContainer.style.display = 'block';
                 loading.style.display = 'none';
@@ -240,6 +443,10 @@
                 expertVideo.currentTime = 0;
                 noviceVideo.currentTime = 0;
 
+                // Initialize gaze visualization
+                updateThresholdCircles();
+                startGazeUpdate();
+
             } catch (error) {
                 console.error('Error loading session:', error);
                 loading.style.display = 'none';
@@ -247,20 +454,133 @@
             }
         }
 
+        // Load gaze data for the session
+        async function loadGazeData(session) {
+            try {
+                const response = await fetch(`/api/session/${session}/gaze_data`);
+                gazeData = await response.json();
+                console.log('Gaze data loaded:', gazeData);
+            } catch (error) {
+                console.error('Error loading gaze data:', error);
+                gazeData = null;
+            }
+        }
+
+        // Update threshold circles
+        function updateThresholdCircles() {
+            const threshold = parseFloat(gazeThresholdValue.value);
+            const plotSize = 300; // Size of the gaze plot
+            const radius = (threshold * plotSize / 2); // Convert threshold to pixels
+            
+            [expertThresholdCircle, noviceThresholdCircle].forEach(circle => {
+                circle.style.width = `${radius * 2}px`;
+                circle.style.height = `${radius * 2}px`;
+            });
+        }
+
+        // Convert gaze coordinates to plot positions
+        function gazeToPlotPosition(gazeX, gazeY) {
+            const plotSize = 300;
+            // Assuming gaze coordinates are normalized around 0.5 (center)
+            // Map from [0, 1] to [0, plotSize]
+            const x = gazeX * plotSize;
+            const y = gazeY * plotSize;
+            return { x, y };
+        }
+
+        // Check if person is looking at other party
+        function isLookingAtOtherParty(gazeX, gazeY, threshold) {
+            const centerX = 0;
+            const centerY = 0;
+            const distance = Math.sqrt(Math.pow(gazeX - centerX, 2) + Math.pow(gazeY - centerY, 2));
+            return distance <= threshold;
+        }
+
+        // Update gaze visualization
+        function updateGazeVisualization() {
+            if (!gazeData || (!expertVideo.currentTime && !noviceVideo.currentTime)) {
+                return;
+            }
+
+            // Use expert video time as reference (videos should be synced)
+            const currentTime = expertVideo.currentTime;
+            const frameIndex = Math.floor(currentTime * 25); // 25 FPS
+            const threshold = parseFloat(gazeThresholdValue.value);
+
+            // Update expert gaze
+            if (gazeData.expert && frameIndex < gazeData.expert.gaze_x.length) {
+                const expertX = gazeData.expert.gaze_x[frameIndex];
+                const expertY = gazeData.expert.gaze_y[frameIndex];
+                const expertConf = gazeData.expert.gaze_confidence[frameIndex];
+
+                // Update coordinates display
+                expertCoordinates.textContent = `X: ${expertX.toFixed(3)}, Y: ${expertY.toFixed(3)}`;
+                expertConfidence.textContent = `Confidence: ${expertConf.toFixed(2)}`;
+
+                // Update plot position
+                const expertPos = gazeToPlotPosition(expertX, expertY);
+                expertGazePoint.style.left = `${expertPos.x}px`;
+                expertGazePoint.style.top = `${expertPos.y}px`;
+
+                // Update status
+                const expertLooking = isLookingAtOtherParty(expertX, expertY, threshold);
+                expertStatus.textContent = expertLooking ? "Looking at Other Party" : "Looking Away";
+                expertStatus.className = expertLooking ? "gaze-status looking-at-other" : "gaze-status looking-away";
+            }
+
+            // Update novice gaze
+            if (gazeData.novice && frameIndex < gazeData.novice.gaze_x.length) {
+                const noviceX = gazeData.novice.gaze_x[frameIndex];
+                const noviceY = gazeData.novice.gaze_y[frameIndex];
+                const noviceConf = gazeData.novice.gaze_confidence[frameIndex];
+
+                // Update coordinates display
+                noviceCoordinates.textContent = `X: ${noviceX.toFixed(3)}, Y: ${noviceY.toFixed(3)}`;
+                noviceConfidence.textContent = `Confidence: ${noviceConf.toFixed(2)}`;
+
+                // Update plot position
+                const novicePos = gazeToPlotPosition(noviceX, noviceY);
+                noviceGazePoint.style.left = `${novicePos.x}px`;
+                noviceGazePoint.style.top = `${novicePos.y}px`;
+
+                // Update status
+                const noviceLooking = isLookingAtOtherParty(noviceX, noviceY, threshold);
+                noviceStatus.textContent = noviceLooking ? "Looking at Other Party" : "Looking Away";
+                noviceStatus.className = noviceLooking ? "gaze-status looking-at-other" : "gaze-status looking-away";
+            }
+        }
+
+        // Start gaze update interval
+        function startGazeUpdate() {
+            stopGazeUpdate(); // Clear any existing interval
+            gazeUpdateInterval = setInterval(updateGazeVisualization, 40); // Update at 25 FPS
+        }
+
+        // Stop gaze update interval
+        function stopGazeUpdate() {
+            if (gazeUpdateInterval) {
+                clearInterval(gazeUpdateInterval);
+                gazeUpdateInterval = null;
+            }
+        }
+
         // Video control handlers
         playBtn.addEventListener('click', function() {
             expertVideo.play();
             noviceVideo.play();
+            startGazeUpdate();
         });
 
         pauseBtn.addEventListener('click', function() {
             expertVideo.pause();
             noviceVideo.pause();
+            stopGazeUpdate();
         });
 
         syncBtn.addEventListener('click', function() {
             // Sync novice video to expert video time
             noviceVideo.currentTime = expertVideo.currentTime;
+            updateGazeVisualization(); // Update gaze visualization immediately
         });
 
         // Keyboard shortcuts
@@ -290,6 +610,24 @@
 
         noviceVideo.addEventListener('loadedmetadata', function() {
             console.log('Novice video loaded');
+        });
+
+        // Update gaze visualization when video is seeking
+        expertVideo.addEventListener('seeked', function() {
+            updateGazeVisualization();
+        });
+
+        noviceVideo.addEventListener('seeked', function() {
+            updateGazeVisualization();
+        });
+
+        // Handle play/pause events for gaze updates
+        expertVideo.addEventListener('play', function() {
+            startGazeUpdate();
+        });
+
+        expertVideo.addEventListener('pause', function() {
+            stopGazeUpdate();
         });
 
         // Error handling for videos
